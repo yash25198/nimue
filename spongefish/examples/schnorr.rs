@@ -18,53 +18,22 @@
 /// 3. `spongefish::VerifierState`, describes the verifier state.
 /// It internally will read the transcript, and deserialize elements as requested making sure that they match with the domain separator.
 /// It can be used to verify a proof.
+use std::sync::Arc;
+
 use ark_ec::{CurveGroup, PrimeGroup};
+use ark_ff::PrimeField;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::UniformRand;
-use rand::Rng as _;
-use spongefish::codecs::arkworks_algebra::{
-    CommonGroupToUnit, DomainSeparator, DuplexSpongeInterface, FieldDomainSeparator,
-    FieldToUnitDeserialize, FieldToUnitSerialize, GroupDomainSeparator, GroupToUnitDeserialize,
-    GroupToUnitSerialize, ProofError, ProofResult, ProverState, UnitToField, VerifierState,
+use spongefish::{
+    codecs::unit::{
+        Common, Pattern as UnitPattern, Prover as ProverTrait, Verifier as VerifierTrait,
+    },
+    transcript::{Pattern, PatternState},
+    DefaultRng, ProofError, ProofResult, ProverState, VerifierState,
 };
 
-/// Extend the domain separator with the Schnorr protocol.
-trait SchnorrDomainSeparator<G: CurveGroup> {
-    /// Shortcut: create a new schnorr proof with statement + proof.
-    fn new_schnorr_proof(domsep: &str) -> Self;
-
-    /// Add the statement of the Schnorr proof
-    fn add_schnorr_statement(self) -> Self;
-    /// Add the Schnorr protocol to the domain separator.
-    fn add_schnorr_domsep(self) -> Self;
-}
-
-impl<G, H> SchnorrDomainSeparator<G> for DomainSeparator<H>
-where
-    G: CurveGroup,
-    H: DuplexSpongeInterface,
-    Self: GroupDomainSeparator<G> + FieldDomainSeparator<G::ScalarField>,
-{
-    fn new_schnorr_proof(domsep: &str) -> Self {
-        Self::new(domsep)
-            .add_schnorr_statement()
-            .add_schnorr_domsep()
-    }
-
-    fn add_schnorr_statement(self) -> Self {
-        self.add_points(1, "generator (P)")
-            .add_points(1, "public key (X)")
-            .ratchet()
-    }
-
-    fn add_schnorr_domsep(self) -> Self {
-        self.add_points(1, "commitment (K)")
-            .challenge_scalars(1, "challenge (c)")
-            .add_scalars(1, "response (r)")
-    }
-}
-
 fn ark_rng() -> ark_std::rand::rngs::StdRng {
-    let seed: [u8; 32] = rand::rng().random();
+    let seed: [u8; 32] = rand::random();
     <ark_std::rand::rngs::StdRng as ark_std::rand::SeedableRng>::from_seed(seed)
 }
 
@@ -77,44 +46,62 @@ fn keygen<G: CurveGroup>() -> (G::ScalarField, G) {
     (sk, pk)
 }
 
+fn point_to_bytes<G: CurveGroup>(point: &G) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    point.serialize_compressed(&mut bytes).unwrap();
+    bytes
+}
+
+fn bytes_to_point<G: CurveGroup>(bytes: &[u8]) -> ProofResult<G> {
+    G::deserialize_compressed(bytes).map_err(|_| ProofError::SerializationError)
+}
+
+fn scalar_to_bytes<F: CanonicalSerialize>(scalar: &F) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    scalar.serialize_compressed(&mut bytes).unwrap();
+    bytes
+}
+
+fn bytes_to_scalar<F: CanonicalDeserialize>(bytes: &[u8]) -> ProofResult<F> {
+    F::deserialize_compressed(bytes).map_err(|_| ProofError::SerializationError)
+}
+
+fn challenge_to_scalar<F: PrimeField>(challenge_bytes: &[u8]) -> F {
+    F::from_le_bytes_mod_order(challenge_bytes)
+}
+
 /// The prove algorithm takes as input
 /// - the prover state `ProverState`, that has access to a random oracle `H` and can absorb/squeeze elements from the group `G`.
 /// - The generator `P` in the group.
 /// - the secret key $x \in \mathbb{Z}_p$
 /// It returns a zero-knowledge proof of knowledge of `x` as a sequence of bytes.
 #[allow(non_snake_case)]
-fn prove<H, G>(
-    // the hash function `H` works over bytes.
-    // Algebraic hashes over a particular domain can be denoted with an additional type argument implementing `spongefish::Unit`.
-    prover_state: &mut ProverState<H>,
-    // the generator
+#[allow(non_snake_case)]
+fn prove<G>(
+    mut prover_state: ProverState<spongefish::DefaultHash, u8, DefaultRng>,
     P: G,
-    // the secret key
     x: G::ScalarField,
-) -> ProofResult<&[u8]>
+) -> ProofResult<Vec<u8>>
 where
-    H: DuplexSpongeInterface,
     G: CurveGroup,
-    ProverState<H>: GroupToUnitSerialize<G> + UnitToField<G::ScalarField>,
 {
-    // `ProverState` types implement a cryptographically-secure random number generator that is tied to the protocol transcript
-    // and that can be accessed via the `rng()` function.
-    let k = G::ScalarField::rand(prover_state.rng());
+    let k = G::ScalarField::rand(&mut ark_rng());
     let K = P * k;
 
-    // Add a sequence of points to the protocol transcript.
-    // An error is returned in case of failed serialization, or inconsistencies with the domain separator provided (see below).
-    prover_state.add_points(&[K])?;
+    let k_bytes = point_to_bytes(&K);
+    prover_state.hint_bytes("commitment", &k_bytes);
 
-    // Fetch a challenge from the current transcript state.
-    let [c] = prover_state.challenge_scalars()?;
+    let mut c_bytes = vec![0u8; 32];
+    prover_state.challenge_units_out("challenge", &mut c_bytes[..]);
+    let c: G::ScalarField = challenge_to_scalar(&c_bytes); // ← Fixed!
 
     let r = k + c * x;
-    // Add a sequence of scalar elements to the protocol transcript.
-    prover_state.add_scalars(&[r])?;
 
-    // Output the current protocol transcript as a sequence of bytes.
-    Ok(prover_state.narg_string())
+    let r_bytes = scalar_to_bytes(&r);
+    prover_state.hint_bytes("response", &r_bytes);
+
+    prover_state.end_protocol::<ProverState>("schnorr");
+    Ok(prover_state.finalize())
 }
 
 /// The verify algorithm takes as input
@@ -122,77 +109,76 @@ where
 /// - the secret key `witness`
 /// It returns a zero-knowledge proof of knowledge of `witness` as a sequence of bytes.
 #[allow(non_snake_case)]
-fn verify<G, H>(
-    // `ArkGroupMelin` contains the veirifier state, including the messages currently read. In addition, it is aware of the group `G`
-    // from which it can serialize/deserialize elements.
-    verifier_state: &mut VerifierState<H>,
-    // The group generator `P``
+fn verify<G>(
+    verifier_state: &mut VerifierState<spongefish::DefaultHash, u8>,
     P: G,
-    // The public key `X`
     X: G,
 ) -> ProofResult<()>
 where
     G: CurveGroup,
-    H: DuplexSpongeInterface,
-    for<'a> VerifierState<'a, H>: GroupToUnitDeserialize<G>
-        + FieldToUnitDeserialize<G::ScalarField>
-        + UnitToField<G::ScalarField>,
 {
-    // Read the protocol from the transcript.
-    // [[Side note:
-    // The method `next_points` internally performs point validation.
-    // Another implementation that does not use spongefish might choose not to validate the point here, but only validate the public-key.
-    // This leads to different errors to be returned: here the proof fails with SerializationError, whereas the other implementation would fail with InvalidProof.
-    // ]]
-    let [K] = verifier_state.next_points().unwrap();
-    let [c] = verifier_state.challenge_scalars().unwrap();
-    let [r]: [G::ScalarField; 1] = verifier_state.next_scalars().unwrap();
+    let k_bytes = verifier_state
+        .hint_bytes("commitment", 32)
+        .map_err(|_| ProofError::SerializationError)?;
+    let K: G = bytes_to_point(k_bytes)?;
 
-    // Check the verification equation, otherwise return a verification error.
-    // The type ProofError is an enum that can report:
-    // - InvalidProof: the proof is not valid
-    // - InvalidIO: the transcript does not match the domain separator
-    // - SerializationError: there was an error serializing/deserializing an element
+    let mut c_bytes = vec![0u8; 32];
+    verifier_state.challenge_units_out("challenge", &mut c_bytes[..]);
+    let c: G::ScalarField = challenge_to_scalar(&c_bytes); // ← Fixed!
+
+    let r_bytes = verifier_state
+        .hint_bytes("response", 32)
+        .map_err(|_| ProofError::SerializationError)?;
+    let r: G::ScalarField = bytes_to_scalar(r_bytes)?;
+
+    verifier_state.end_protocol::<ProverState>("schnorr");
     if P * r == K + X * c {
         Ok(())
     } else {
         Err(ProofError::InvalidProof)
     }
-
-    // From here, another proof can be verified using the same  instance
-    // and proofs can be composed. The transcript holds the whole proof,
 }
 
 #[allow(non_snake_case)]
 fn main() {
-    // Instantiate the group and the random oracle:
-    // Set the group:
     type G = ark_curve25519::EdwardsProjective;
-    // Set the hash function (commented out other valid choices):
-    // type H = spongefish::hash::Keccak;
-    type H = spongefish::duplex_sponge::legacy::DigestBridge<blake2::Blake2s256>;
-    // type H = spongefish::hash::legacy::DigestBridge<sha2::Sha256>;
 
-    // Set up the IO for the protocol transcript with domain separator "spongefish::examples::schnorr"
-    let io: DomainSeparator<H> =
-        SchnorrDomainSeparator::<G>::new_schnorr_proof("spongefish::example");
+    let mut pattern = PatternState::<u8>::new();
+    pattern.begin_protocol::<ProverState>("schnorr");
+    pattern.public_units("generator", 32); // compressed point size
+    pattern.public_units("public_key", 32);
+    pattern.ratchet();
+    pattern.hint_bytes("commitment", 32);
+    pattern.challenge_units("challenge", 32);
+    pattern.hint_bytes("response", 32);
+    pattern.end_protocol::<ProverState>("schnorr");
 
-    // Set up the elements to prove
+    let interaction_pattern = pattern.finalize();
+
+    let mut prover_state =
+        ProverState::<spongefish::DefaultHash, u8, DefaultRng>::from(interaction_pattern.clone());
+
     let P = G::generator();
-    let (x, X) = keygen();
+    let (x, X) = keygen::<G>();
 
-    // Create the prover transcript, add the statement to it, and then invoke the prover.
-    let mut prover_state = io.to_prover_state();
-    prover_state.public_points(&[P, P * x]).unwrap();
-    prover_state.ratchet().unwrap();
-    let proof = prove(&mut prover_state, P, x).expect("Invalid proof");
+    prover_state.begin_protocol::<ProverState>("schnorr");
 
-    // Print out the hex-encoded schnorr proof.
-    println!("Here's a Schnorr signature:\n{}", hex::encode(proof));
+    let p_bytes = point_to_bytes(&P);
+    let x_bytes = point_to_bytes(&X);
+    prover_state.public_units("generator", &p_bytes);
+    prover_state.public_units("public_key", &x_bytes);
+    prover_state.ratchet();
 
-    // Verify the proof: create the verifier transcript, add the statement to it, and invoke the verifier.
-    let mut verifier_state = io.to_verifier_state(proof);
-    verifier_state.public_points(&[P, X]).unwrap();
-    verifier_state.ratchet().unwrap();
-    verify(&mut verifier_state, P, X).expect("Invalid proof");
+    let proof = prove(prover_state, P, x).expect("Proving failed");
+
+    println!("Here's a Schnorr signature:\n{}", hex::encode(&proof));
+
+    let mut verifier_state =
+        VerifierState::<spongefish::DefaultHash, u8>::new(Arc::new(interaction_pattern), &proof);
+    verifier_state.begin_protocol::<ProverState>("schnorr");
+    verifier_state.public_units("generator", &p_bytes);
+    verifier_state.public_units("public_key", &x_bytes);
+    verifier_state.ratchet();
+    verify(&mut verifier_state, P, X).expect("Verification failed");
+    verifier_state.finalize();
 }
