@@ -121,6 +121,7 @@
 pub mod field;
 mod fp_unit;
 pub mod serialize;
+pub mod pattern_state;
 
 // /// domain separator utilities.
 // mod domain_separator;
