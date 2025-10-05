@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use super::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length};
+use super::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, PatternError};
 use crate::{codecs::unit, Unit};
 
 /// Records an interaction pattern.
@@ -26,6 +26,7 @@ impl<U> PatternState<U>
 where
     U: Unit,
 {
+    const MAX_NESTING_DEPTH: usize = 64;
     #[must_use]
     pub const fn new() -> Self {
         Self {
@@ -49,31 +50,27 @@ where
         }
     }
 
-    /// Add a new interaction to the pattern.
-    ///
-    /// # Panics
-    ///
-    /// Panics if
-    /// - the interaction does not match the parent kind and
-    ///   the parent kind is not [`Kind::Protocol`],
-    /// - the it is an [`Hierarchy::End`], but there is either no
-    ///   [`Hierarchy::Begin`] or it does not match the end.being
-    pub fn interact(&mut self, interaction: Interaction) {
-        assert!(!self.finalized, "Transcript is already finalized.");
+    /// Add a new interaction to the pattern, returning an error on mismatch.
+    pub fn interact(&mut self, interaction: Interaction) -> Result<(), PatternError> {
+        if self.finalized {
+            return Err(PatternError::AlreadyFinalized);
+        }
 
         match interaction.hierarchy() {
             Hierarchy::Begin => {
+                if self.hierarchy_stack.len() >= Self::MAX_NESTING_DEPTH {
+                    return Err(PatternError::DepthExceeded { limit: Self::MAX_NESTING_DEPTH });
+                }
                 self.hierarchy_stack.push(self.interactions.len());
             }
             Hierarchy::End => {
                 let Some(begin_idx) = self.hierarchy_stack.pop() else {
-                    panic!("Missing begin for {interaction}");
+                    return Err(PatternError::MissingBegin { end: interaction.clone() });
                 };
                 let begin = &self.interactions[begin_idx];
-                assert!(
-                    interaction.closes(begin),
-                    "Mismatched begin and end: {begin}, {interaction}"
-                );
+                if !interaction.closes(begin) {
+                    return Err(PatternError::MismatchedBeginEnd { begin: begin.clone(), end: interaction.clone() });
+                }
             }
             Hierarchy::Atomic => {
                 // Atomic interactions are valid at any level
@@ -81,7 +78,9 @@ where
         }
 
         self.interactions.push(interaction);
+        Ok(())
     }
+
 
     /// Return the last unclosed [`Hierachy::Begin`] interaction.
     fn last_open_begin(&self) -> Option<&Interaction> {
@@ -95,9 +94,12 @@ impl<U> super::Pattern for PatternState<U>
 where
     U: Unit,
 {
-    fn abort(&mut self) {
-        assert!(!self.finalized, "Transcript is already finalized.");
+    fn abort(&mut self) -> Result<(), PatternError> {
+        if self.finalized {
+            return Err(PatternError::AlreadyFinalized);
+        }
         self.finalized = true;
+        Ok(())
     }
 
     fn in_hierarchy(&self) -> bool {
@@ -108,12 +110,12 @@ where
         self.hierarchy_stack.len()
     }
 
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) {
-        self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length));
+    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError> {
+        self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length))
     }
 
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) {
-        self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length));
+    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError> {
+        self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length))
     }
 }
 

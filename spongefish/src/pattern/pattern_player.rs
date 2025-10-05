@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use super::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length};
+use super::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, PatternError};
 
 /// Play back an interaction pattern and make sure all interactions match up.
 ///
@@ -19,6 +19,7 @@ pub struct PatternPlayer {
 }
 
 impl PatternPlayer {
+    const MAX_NESTING_DEPTH: usize = 64;
     #[must_use]
     pub const fn new(pattern: Arc<InteractionPattern>) -> Self {
         Self {
@@ -34,43 +35,46 @@ impl PatternPlayer {
     }
 
     /// Consume all interactions of a specific hierarchy and kind
-    pub fn consume_hierarchy(&mut self, hierarchy: Hierarchy, kind: Kind) -> usize {
+    pub fn consume_hierarchy(&mut self, hierarchy: Hierarchy, kind: Kind) -> Result<usize, PatternError> {
         let mut consumed = 0;
         while let Some(next) = self.peek_next() {
             if next.hierarchy() == hierarchy && next.kind() == kind {
-                self.interact(next.clone());
+                self.interact(next.clone())?;
                 consumed += 1;
             } else {
                 break;
             }
         }
-        consumed
+        Ok(consumed)
     }
 
     /// Consume Begin interactions of a specific kind
-    pub fn consume_begin(&mut self, kind: Kind) {
-        self.consume_hierarchy(Hierarchy::Begin, kind);
+    pub fn consume_begin(&mut self, kind: Kind) -> Result<usize, PatternError> {
+        self.consume_hierarchy(Hierarchy::Begin, kind)
     }
 
     /// Consume End interactions of a specific kind
-    pub fn consume_end(&mut self, kind: Kind) {
-        self.consume_hierarchy(Hierarchy::End, kind);
+    pub fn consume_end(&mut self, kind: Kind) -> Result<usize, PatternError> {
+        self.consume_hierarchy(Hierarchy::End, kind)
     }
 
-    pub fn finalize(mut self) {
-        assert!(!self.finalized, "Transcript is already finalized.");
+    pub fn finalize(mut self) -> Result<(), PatternError> {
+        if self.finalized {
+            return Err(PatternError::AlreadyFinalized);
+        }
 
         while !self.hierarchy_stack.is_empty() {
             // Skip to the matching End
             self.skip_to_matching_end();
         }
 
-        assert!(
-            self.position >= self.pattern.interactions().len(),
-            "Transcript not finished, expecting {}",
-            self.pattern.interactions()[self.position]
-        );
+        if self.position < self.pattern.interactions().len() {
+            let expected = self.pattern.interactions()[self.position].clone();
+            self.finalized = true;
+            return Err(PatternError::TranscriptNotFinished { expected });
+        }
         self.finalized = true;
+        Ok(())
     }
 
     /// Skip forward to the matching End for the current Begin
@@ -123,12 +127,14 @@ impl PatternPlayer {
         None
     }
 
-    pub fn interact(&mut self, interaction: Interaction) {
-        assert!(!self.finalized, "Transcript is already finalized.");
+    pub fn interact(&mut self, interaction: Interaction) -> Result<(), PatternError> {
+        if self.finalized {
+            return Err(PatternError::AlreadyFinalized);
+        }
 
         let Some(expected) = self.pattern.interactions().get(self.position) else {
             self.finalized = true;
-            panic!("Received interaction, but no more expected interactions: {interaction}");
+            return Err(PatternError::NoMoreExpected { got: interaction });
         };
 
         // Smart matching when auto_traverse is enabled
@@ -154,7 +160,7 @@ impl PatternPlayer {
                         self.skip_to_matching_end();
                     }
 
-                    return;
+                    return Ok(());
                 }
             }
         }
@@ -163,19 +169,21 @@ impl PatternPlayer {
         if expected.hierarchy() == Hierarchy::End && interaction.hierarchy() != Hierarchy::End {
             // Skip this End and try matching again
             self.position += 1;
-            self.interact(interaction);
-            return;
+            return self.interact(interaction);
         }
 
         // Normal exact matching
         if expected != &interaction {
             self.finalized = true;
-            panic!("Received interaction {interaction}, but expected {expected}");
+            return Err(PatternError::UnexpectedInteraction { expected: expected.clone(), got: interaction });
         }
 
         // Update hierarchy tracking
         match interaction.hierarchy() {
             Hierarchy::Begin => {
+                if self.hierarchy_stack.len() >= Self::MAX_NESTING_DEPTH {
+                    return Err(PatternError::DepthExceeded { limit: Self::MAX_NESTING_DEPTH });
+                }
                 self.hierarchy_stack.push(self.position);
             }
             Hierarchy::End => {
@@ -194,19 +202,23 @@ impl PatternPlayer {
         }
 
         self.position += 1;
+        Ok(())
     }
 }
 
 impl Drop for PatternPlayer {
     fn drop(&mut self) {
-        assert!(self.finalized, "Dropped unfinalized transcript.");
+        debug_assert!(self.finalized, "Dropped unfinalized transcript.");
     }
 }
 
 impl super::Pattern for PatternPlayer {
-    fn abort(&mut self) {
-        assert!(!self.finalized, "Transcript is already finalized.");
+    fn abort(&mut self) -> Result<(), PatternError> {
+        if self.finalized {
+            return Err(PatternError::AlreadyFinalized);
+        }
         self.finalized = true;
+        Ok(())
     }
 
     fn in_hierarchy(&self) -> bool {
@@ -217,11 +229,11 @@ impl super::Pattern for PatternPlayer {
         self.hierarchy_stack.len()
     }
 
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) {
-        self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length));
+    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError> {
+        self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length))
     }
 
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) {
-        self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length));
+    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError> {
+        self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length))
     }
 }
