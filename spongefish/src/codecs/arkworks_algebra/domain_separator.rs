@@ -5,10 +5,9 @@ use super::{FieldPattern, GroupPattern};
 use crate::{
     codecs::{
         bytes::{self, Pattern as _},
-        bytes_modp, bytes_uniform_modp,
         unit::{self, Pattern as _},
     },
-    pattern::{self, Label, Length, Pattern as _, PatternState},
+    pattern::{self, helpers::*, Label, Length, Pattern as _, PatternState},
 };
 
 impl<F> FieldPattern<F> for PatternState
@@ -16,25 +15,23 @@ where
     F: Field,
 {
     fn message_scalars(&mut self, label: Label, count: usize) {
-        self.begin_message::<F>(label, Length::Fixed(count));
-        self.message_bytes(
-            "base-field-coefficients-little-endian",
-            count
-                * F::extension_degree() as usize
-                * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
+        field_pattern_message::<_, F>(
+            self,
+            label,
+            count,
+            F::BasePrimeField::MODULUS_BIT_SIZE,
+            F::extension_degree() as usize,
         );
-        self.end_message::<F>(label, Length::Fixed(count));
     }
 
     fn challenge_scalars(&mut self, label: Label, count: usize) {
-        self.begin_challenge::<F>(label, Length::Fixed(count));
-        self.challenge_bytes(
-            "base-field-coefficients-little-endian",
-            count
-                * F::extension_degree() as usize
-                * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
+        field_pattern_challenge::<_, F>(
+            self,
+            label,
+            count,
+            F::BasePrimeField::MODULUS_BIT_SIZE,
+            F::extension_degree() as usize,
         );
-        self.end_challenge::<F>(label, Length::Fixed(count));
     }
 }
 
@@ -43,10 +40,8 @@ where
     G: CurveGroup,
 {
     fn message_points(&mut self, label: Label, count: usize) {
-        self.begin_message::<G>(label, Length::Fixed(count));
         let compressed_size = G::default().compressed_size();
-        self.message_bytes("serialized-group", count * compressed_size);
-        self.end_message::<G>(label, Length::Fixed(count));
+        group_pattern_message::<_, G>(self, label, count, compressed_size);
     }
 }
 

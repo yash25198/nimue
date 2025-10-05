@@ -1,5 +1,6 @@
 //! Abstract interaction patterns for interactive protocols.
 
+pub mod helpers;
 mod interaction;
 mod interaction_pattern;
 mod pattern_player;
