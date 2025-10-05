@@ -33,6 +33,30 @@ impl PatternPlayer {
         self.pattern.interactions().get(self.position)
     }
 
+    /// Consume all interactions of a specific hierarchy and kind
+    pub fn consume_hierarchy(&mut self, hierarchy: Hierarchy, kind: Kind) -> usize {
+        let mut consumed = 0;
+        while let Some(next) = self.peek_next() {
+            if next.hierarchy() == hierarchy && next.kind() == kind {
+                self.interact(next.clone());
+                consumed += 1;
+            } else {
+                break;
+            }
+        }
+        consumed
+    }
+
+    /// Consume Begin interactions of a specific kind
+    pub fn consume_begin(&mut self, kind: Kind) {
+        self.consume_hierarchy(Hierarchy::Begin, kind);
+    }
+
+    /// Consume End interactions of a specific kind
+    pub fn consume_end(&mut self, kind: Kind) {
+        self.consume_hierarchy(Hierarchy::End, kind);
+    }
+
     pub fn finalize(mut self) {
         assert!(!self.finalized, "Transcript is already finalized.");
 

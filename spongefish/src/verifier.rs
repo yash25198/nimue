@@ -58,33 +58,22 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
 
     #[inline]
     pub fn fill_next_units(&mut self, input: &mut [U]) -> Result<(), std::io::Error> {
-        // Consume all Begin Message interactions
-        while let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // Consume Begin Message interactions
+        self.pattern.consume_begin(Kind::Message);
 
-        // The atomic interaction
+        // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
             "units",
             Length::Fixed(input.len()),
         ));
+
         U::read(&mut self.narg_string, input)?;
         self.duplex_sponge.absorb_unchecked(input);
 
-        // Consume all End Message interactions
-        while let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // Consume End Message interactions
+        self.pattern.consume_end(Kind::Message);
 
         Ok(())
     }
@@ -157,62 +146,41 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'
     /// Add native elements to the sponge without writing them to the NARG string.
     #[inline]
     fn public_units(&mut self, input: &[U]) {
-        // Consume all Begin Public interactions
-        while let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Public {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // Consume Begin Public interactions
+        self.pattern.consume_begin(Kind::Public);
 
+        // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
             "public_units",
             Length::Fixed(input.len()),
         ));
+
         self.duplex_sponge.absorb_unchecked(input);
 
-        // Consume all End Public interactions
-        while let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Public {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // Consume End Public interactions
+        self.pattern.consume_end(Kind::Public);
     }
 
     /// Fill `input` with units sampled uniformly at random.
     #[inline]
     fn fill_challenge_units(&mut self, input: &mut [U]) {
-        // Consume all Begin interactions for challenges
-        while let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Challenge {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // Consume Begin Challenge interactions
+        self.pattern.consume_begin(Kind::Challenge);
 
-        // The atomic interaction
+        // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Challenge,
             "units",
             Length::Fixed(input.len()),
         ));
+
         self.duplex_sponge.squeeze_unchecked(input);
 
-        // Consume all End interactions
-        while let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Challenge {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // Consume End Challenge interactions
+        self.pattern.consume_end(Kind::Challenge);
     }
 }
 
@@ -226,25 +194,6 @@ impl<H: DuplexSpongeInterface<u8>> BytesToUnitDeserialize for VerifierState<'_, 
     /// Read the next `input.len()` bytes from the NARG string and return them.
     #[inline]
     fn fill_next_bytes(&mut self, input: &mut [u8]) -> Result<(), std::io::Error> {
-        // Check if we're already in a bytes hierarchy
-        // If the next interaction is Begin Message bytes, don't create another one
-        if let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
-                // Just consume the hierarchy that's already there
-                self.pattern.interact(next.clone());
-                self.fill_next_units(input)?;
-
-                // Consume the End
-                if let Some(end) = self.peek_next() {
-                    if end.hierarchy() == Hierarchy::End && end.kind() == Kind::Message {
-                        self.pattern.interact(end.clone());
-                    }
-                }
-                return Ok(());
-            }
-        }
-
-        // Otherwise, fill_next_units will handle any hierarchy present
         self.fill_next_units(input)
     }
 }

@@ -126,24 +126,24 @@ where
     }
 
     pub fn add_units(&mut self, input: &[U]) {
-        // Check if we're in a hierarchical context
-        if let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin {
-                // Skip the atomic interaction, the hierarchy handles it
-                return;
-            }
-        }
+        // Consume Begin Message interactions
+        self.pattern.consume_begin(Kind::Message);
 
+        // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
             "units",
             Length::Fixed(input.len()),
         ));
+
         self.duplex_sponge.absorb_unchecked(input);
         let old_len = self.narg_string.len();
         U::write(input, &mut self.narg_string).unwrap();
         self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
+
+        // Consume End Message interactions
+        self.pattern.consume_end(Kind::Message);
     }
 
     pub fn ratchet(&mut self) {
@@ -200,70 +200,45 @@ where
     /// Add public messages to the protocol transcript.
     /// Messages input to this function are not added to the protocol transcript.
     /// They are however absorbed into the verifier's sponge for Fiat-Shamir, and used to re-seed the prover state.
-    ///
-    /// ```
-    /// # use spongefish::*;
-    ///
-    /// let domain_separator = DomainSeparator::<DefaultHash>::new("📝").absorb(20, "how not to make pasta 🙉");
-    /// let mut prover_state = domain_separator.to_prover_state();
-    /// assert!(prover_state.public_bytes(&[0u8; 20]).is_ok());
-    /// assert_eq!(prover_state.narg_string(), b"");
-    /// ```
     fn public_units(&mut self, input: &[U]) {
-        // Check context for hierarchical handling
-        if let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin {
-                return;
-            }
-        }
+        // Consume Begin Public interactions
+        self.pattern.consume_begin(Kind::Public);
 
+        // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
             "public_units",
             Length::Fixed(input.len()),
         ));
+
         self.duplex_sponge.absorb_unchecked(input);
         let old_len = self.narg_string.len();
-        // write never fails on Vec<u8>
         U::write(input, &mut self.narg_string).unwrap();
         self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
         self.narg_string.truncate(old_len);
+
+        // Consume End Public interactions
+        self.pattern.consume_end(Kind::Public);
     }
 
     /// Fill a slice with uniformly-distributed challenges from the verifier.
     fn fill_challenge_units(&mut self, output: &mut [U]) {
-        // Check if we're in a hierarchical challenge
-        if let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Challenge {
-                // Consume all Begin interactions
-                while let Some(next) = self.pattern.peek_next() {
-                    if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Challenge {
-                        self.pattern.interact(next.clone());
-                    } else {
-                        break;
-                    }
-                }
-            }
-        }
+        // Consume Begin Challenge interactions
+        self.pattern.consume_begin(Kind::Challenge);
 
-        // The actual atomic challenge interaction
+        // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Challenge,
             "units",
             Length::Fixed(output.len()),
         ));
+
         self.duplex_sponge.squeeze_unchecked(output);
 
-        // Consume all End interactions for challenges
-        while let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Challenge {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // Consume End Challenge interactions
+        self.pattern.consume_end(Kind::Challenge);
     }
 }
 
@@ -286,23 +261,9 @@ where
     R: RngCore + CryptoRng,
 {
     fn add_bytes(&mut self, input: &[u8]) {
-        // Check if we need to handle hierarchy
-        if let Some(next) = self.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
-                // Pattern will handle the hierarchy
-                self.add_units(input);
-                return;
-            }
-        }
-
-        self.pattern
-            .begin_message::<u8>("bytes", Length::Fixed(input.len()));
         self.add_units(input);
-        self.pattern
-            .end_message::<u8>("bytes", Length::Fixed(input.len()));
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
