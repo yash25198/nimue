@@ -67,7 +67,3 @@ required-features = ["arkworks-algebra"]
 [[example]]
 name = "bulletproof"
 required-features = ["arkworks-algebra"]
-
-[[example]]
-name = "schnorr_example"
-required-features = ["arkworks-algebra"]
