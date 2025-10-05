@@ -15,6 +15,8 @@ where
 {
     /// Recorded interactions.
     interactions: Vec<Interaction>,
+    /// Stack of open hierarchical interactions
+    hierarchy_stack: Vec<usize>, // Track hierarchy
     /// Whether the transcript playback has been finalized.
     finalized: bool,
     _unit: PhantomData<U>,
@@ -28,6 +30,7 @@ where
     pub const fn new() -> Self {
         Self {
             interactions: Vec::new(),
+            hierarchy_stack: Vec::new(),
             finalized: false,
             _unit: PhantomData,
         }
@@ -36,6 +39,10 @@ where
     #[must_use]
     pub fn finalize(self) -> InteractionPattern {
         assert!(!self.finalized, "Transcript is already finalized.");
+        assert!(
+            self.hierarchy_stack.is_empty(),
+            "Unclosed hierarchical interactions remain"
+        );
         match InteractionPattern::new(self.interactions) {
             Ok(transcript) => transcript,
             Err(e) => panic!("Error validating interaction pattern: {e}"),
@@ -53,48 +60,34 @@ where
     ///   [`Hierarchy::Begin`] or it does not match the end.being
     pub fn interact(&mut self, interaction: Interaction) {
         assert!(!self.finalized, "Transcript is already finalized.");
-        if let Some(begin) = self.last_open_begin() {
-            // Check if the new interaction is of a permissible kind.
-            assert!(
-                begin.kind() == Kind::Protocol || begin.kind() == interaction.kind(),
-                "Invalid interaction kind: expected {}, got {}",
-                begin.kind(),
-                interaction.kind()
-            );
-            // Check if it is a matching End to the current Begin
-            assert!(
-                interaction.hierarchy() != Hierarchy::End || interaction.closes(begin),
-                "Mismatched begin and end: {begin}, {interaction}"
-            );
-        } else {
-            // No unclosed Begin interaction. Make sure this is not an end.
-            assert!(
-                interaction.hierarchy() != Hierarchy::End,
-                "Missing begin for {interaction}"
-            );
+
+        match interaction.hierarchy() {
+            Hierarchy::Begin => {
+                self.hierarchy_stack.push(self.interactions.len());
+            }
+            Hierarchy::End => {
+                let Some(begin_idx) = self.hierarchy_stack.pop() else {
+                    panic!("Missing begin for {interaction}");
+                };
+                let begin = &self.interactions[begin_idx];
+                assert!(
+                    interaction.closes(begin),
+                    "Mismatched begin and end: {begin}, {interaction}"
+                );
+            }
+            Hierarchy::Atomic => {
+                // Atomic interactions are valid at any level
+            }
         }
 
-        // All good, append
         self.interactions.push(interaction);
     }
 
     /// Return the last unclosed [`Hierachy::Begin`] interaction.
     fn last_open_begin(&self) -> Option<&Interaction> {
-        // Reverse search to find matching begin
-        let mut stack = 0;
-        for interaction in self.interactions.iter().rev() {
-            match interaction.hierarchy() {
-                Hierarchy::End => stack += 1,
-                Hierarchy::Begin => {
-                    if stack == 0 {
-                        return Some(interaction);
-                    }
-                    stack -= 1;
-                }
-                _ => {}
-            }
-        }
-        None
+        self.hierarchy_stack
+            .last()
+            .map(|&idx| &self.interactions[idx])
     }
 }
 
@@ -105,6 +98,14 @@ where
     fn abort(&mut self) {
         assert!(!self.finalized, "Transcript is already finalized.");
         self.finalized = true;
+    }
+
+    fn in_hierarchy(&self) -> bool {
+        !self.hierarchy_stack.is_empty()
+    }
+
+    fn depth(&self) -> usize {
+        self.hierarchy_stack.len()
     }
 
     fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) {
