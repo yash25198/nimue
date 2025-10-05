@@ -179,6 +179,13 @@ impl PatternPlayer {
                 self.hierarchy_stack.push(self.position);
             }
             Hierarchy::End => {
+                if let Some(&begin_pos) = self.hierarchy_stack.last() {
+                    let begin = &self.pattern.interactions()[begin_pos];
+                    assert!(
+                        interaction.closes(begin),
+                        "End does not close the top Begin: expected same kind and label",
+                    );
+                }
                 self.hierarchy_stack
                     .pop()
                     .expect("Pattern validation should ensure matching Begin/End");
