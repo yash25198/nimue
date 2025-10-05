@@ -23,6 +23,12 @@ pub trait Pattern {
     /// Panics only if the interaction is already finalized or aborted.
     fn abort(&mut self);
 
+    /// Track whether we're in a hierarchical context
+    fn in_hierarchy(&self) -> bool;
+
+    /// Get the current nesting depth
+    fn depth(&self) -> usize;
+
     /// Begin of a group of interactions.
     ///
     /// # Panics
