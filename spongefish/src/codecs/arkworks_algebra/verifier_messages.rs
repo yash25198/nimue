@@ -17,15 +17,15 @@ impl<C: FpConfig<N>, const N: usize> Unit for Fp<C, N> {
     fn write(bunch: &[Self], mut w: &mut impl io::Write) -> Result<(), io::Error> {
         for b in bunch {
             b.serialize_compressed(&mut w)
-                .map_err(|_| io::Error::other("oh no!"))?;
+                .map_err(|_| io::Error::other("Serialization failed"))?;
         }
         Ok(())
     }
 
     fn read(mut r: &mut impl io::Read, bunch: &mut [Self]) -> Result<(), io::Error> {
         for b in bunch.iter_mut() {
-            let b_result = Self::deserialize_compressed(&mut r);
-            *b = b_result.map_err(|_| io::Error::other("Unable to deserialize into Field."))?;
+            *b = Self::deserialize_compressed(&mut r)
+                .map_err(|_| io::Error::other("Deserialization failed"))?;
         }
         Ok(())
     }
@@ -53,7 +53,9 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed.");
         }
-        self.public_bytes(&buf);
+
+        // Only absorb into sponge if we're not in a hierarchical context
+        // The hierarchical handlers will manage this
         buf
     }
 }
@@ -94,7 +96,6 @@ where
             )
             .expect("Could not convert");
         }
-        ()
     }
 }
 

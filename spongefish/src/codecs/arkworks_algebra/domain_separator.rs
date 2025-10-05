@@ -38,6 +38,19 @@ where
     }
 }
 
+impl<G> GroupPattern<G> for PatternState<u8>
+where
+    G: CurveGroup,
+{
+    fn message_points(&mut self, label: Label, count: usize) {
+        self.begin_message::<G>(label, Length::Fixed(count));
+        let compressed_size = G::default().compressed_size();
+        self.message_bytes("serialized-group", count * compressed_size);
+        self.end_message::<G>(label, Length::Fixed(count));
+    }
+}
+
+// Field-specific implementations with proper hierarchy
 impl<F, C, const N: usize> FieldPattern<F> for PatternState<Fp<C, N>>
 where
     F: Field<BasePrimeField = Fp<C, N>>,
@@ -59,44 +72,6 @@ where
             count * F::extension_degree() as usize,
         );
         self.end_challenge::<F>(label, Length::Fixed(count));
-    }
-}
-
-/// Implementation where `Unit = Fp<C, N>`
-impl<C, const N: usize> bytes::Pattern for PatternState<Fp<C, N>>
-where
-    C: FpConfig<N>,
-{
-    /// Add `count` bytes to the transcript, encoding each of them as an element of the field `Fp`.
-    fn public_bytes(&mut self, label: Label, size: usize) {
-        self.begin_public::<u8>(label, Length::Fixed(size));
-        self.public_units("units", size);
-        self.end_public::<u8>(label, Length::Fixed(size))
-    }
-
-    /// Add `count` bytes to the transcript, encoding each of them as an element of the field `Fp`.
-    fn message_bytes(&mut self, label: Label, size: usize) {
-        self.begin_message::<u8>(label, Length::Fixed(size));
-        self.message_units("units", size);
-        self.end_message::<u8>(label, Length::Fixed(size))
-    }
-
-    fn challenge_bytes(&mut self, label: Label, size: usize) {
-        self.begin_challenge::<u8>(label, Length::Fixed(size));
-        let n = crate::codecs::random_bits_in_random_modp(Fp::<C, N>::MODULUS) / 8;
-        self.challenge_units("units", size.div_ceil(n));
-        self.end_challenge::<u8>(label, Length::Fixed(size))
-    }
-}
-
-impl<G> GroupPattern<G> for PatternState<u8>
-where
-    G: CurveGroup,
-{
-    fn message_points(&mut self, label: Label, count: usize) {
-        self.begin_message::<G>(label, Length::Fixed(count));
-        self.message_bytes("serialized-group", count * G::default().compressed_size());
-        self.end_message::<G>(label, Length::Fixed(count));
     }
 }
 

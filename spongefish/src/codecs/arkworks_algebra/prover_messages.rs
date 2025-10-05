@@ -5,16 +5,51 @@ use rand::{CryptoRng, RngCore};
 
 use super::{CommonFieldToUnit, CommonGroupToUnit, FieldToUnitSerialize, GroupToUnitSerialize};
 use crate::{
+    pattern::{Hierarchy, Interaction, Kind, Length, Pattern},
     BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, DuplexSpongeInterface,
-    ProofResult, ProverState, Unit, UnitTranscript, VerifierState,
+    ProverState, Unit, UnitTranscript, VerifierState,
 };
 
 impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSerialize<F>
     for ProverState<H, u8, R>
 {
     fn add_scalars(&mut self, input: &[F]) {
-        let serialized = self.public_scalars(input);
-        self.narg_string.extend(serialized);
+        // Consume all Begin interactions for messages
+        while let Some(next) = self.pattern.peek_next() {
+            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
+                self.pattern.interact(next.clone());
+            } else {
+                break;
+            }
+        }
+
+        // Serialize and add
+        let mut buf = Vec::new();
+        for f in input {
+            f.serialize_compressed(&mut buf)
+                .expect("Serialization failed");
+        }
+
+        // The atomic interaction
+        self.pattern.interact(Interaction::new::<u8>(
+            Hierarchy::Atomic,
+            Kind::Message,
+            "units",
+            Length::Fixed(buf.len()),
+        ));
+
+        self.duplex_sponge.absorb_unchecked(&buf);
+        self.narg_string.extend(&buf);
+        self.rng.ds.absorb_unchecked(&buf);
+
+        // Consume all End interactions for messages
+        while let Some(next) = self.pattern.peek_next() {
+            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Message {
+                self.pattern.interact(next.clone());
+            } else {
+                break;
+            }
+        }
     }
 }
 
@@ -40,11 +75,44 @@ where
     G: CurveGroup,
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
-    Self: CommonGroupToUnit<G, Repr = Vec<u8>>,
 {
     fn add_points(&mut self, input: &[G]) {
-        let serialized = self.public_points(input);
-        self.narg_string.extend(serialized);
+        // Consume all Begin interactions
+        while let Some(next) = self.pattern.peek_next() {
+            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
+                self.pattern.interact(next.clone());
+            } else {
+                break;
+            }
+        }
+
+        // Serialize
+        let mut serialized = Vec::new();
+        for p in input {
+            p.serialize_compressed(&mut serialized)
+                .expect("Serialization failed");
+        }
+
+        // The atomic interaction
+        self.pattern.interact(Interaction::new::<u8>(
+            Hierarchy::Atomic,
+            Kind::Message,
+            "units",
+            Length::Fixed(serialized.len()),
+        ));
+
+        self.duplex_sponge.absorb_unchecked(&serialized);
+        self.narg_string.extend(&serialized);
+        self.rng.ds.absorb_unchecked(&serialized);
+
+        // Consume all End interactions
+        while let Some(next) = self.pattern.peek_next() {
+            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Message {
+                self.pattern.interact(next.clone());
+            } else {
+                break;
+            }
+        }
     }
 }
 
