@@ -33,6 +33,7 @@ default = []
 arkworks-algebra = ["dep:ark-ff", "dep:ark-ec", "dep:ark-serialize"]
 zkcrypto-group = ["dep:group"]
 asm = ["keccak/asm", "keccak/simd"]
+typed = []
 
 [dev-dependencies]
 ark-std = { workspace = true }
@@ -67,3 +68,7 @@ required-features = ["arkworks-algebra"]
 [[example]]
 name = "bulletproof"
 required-features = ["arkworks-algebra"]
+
+[[example]]
+name = "schnorr_typed"
+required-features = ["arkworks-algebra","typed"]

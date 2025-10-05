@@ -140,6 +140,8 @@ pub mod keccak;
 pub mod codecs;
 
 pub mod pattern;
+#[cfg(feature = "typed")]
+pub mod typed;
 /// Unit-tests.
 #[cfg(test)]
 mod tests;
