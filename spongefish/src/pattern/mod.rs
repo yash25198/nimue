@@ -152,27 +152,27 @@ mod tests {
     fn test_record_playback() {
         // Record a new pattern
         let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol::<()>("Example protocol");
+        pattern.begin_protocol::<()>("Example protocol").expect("Failed to begin protocol");
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
-        pattern.end_protocol::<()>("Example protocol");
+        )).expect("Failed to interact with pattern");
+        pattern.end_protocol::<()>("Example protocol").expect("Failed to end protocol");
         let pattern = pattern.finalize();
 
         // Play it back exactly
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.begin_protocol::<()>("Example protocol");
+        playback.begin_protocol::<()>("Example protocol").expect("Failed to begin protocol");
         playback.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
-        playback.end_protocol::<()>("Example protocol");
-        playback.finalize();
+        )).expect("Failed to interact with pattern");
+        playback.end_protocol::<()>("Example protocol").expect("Failed to end protocol");
+        playback.finalize().expect("Failed to finalize");
     }
 
     #[test]
@@ -184,7 +184,7 @@ mod tests {
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
@@ -193,7 +193,7 @@ mod tests {
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
     }
 
     #[test]
@@ -202,14 +202,14 @@ mod tests {
     )]
     fn panics_if_record_begin_end_mismatch() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol::<()>("Example protocol");
+        pattern.begin_protocol::<()>("Example protocol").expect("Failed to begin protocol");
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
-        pattern.end_protocol::<()>("Invalid example protocol");
+        )).expect("Failed to interact with pattern");
+        pattern.end_protocol::<()>("Invalid example protocol").expect("Failed to end protocol");
         let _pattern = pattern.finalize();
     }
     #[test]
@@ -218,13 +218,13 @@ mod tests {
     )]
     fn panics_if_record_unmatched_begin() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol::<()>("Example protocol");
+        pattern.begin_protocol::<()>("Example protocol").expect("Failed to begin protocol");
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
         let _pattern = pattern.finalize();
     }
 
@@ -239,7 +239,7 @@ mod tests {
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
@@ -248,8 +248,8 @@ mod tests {
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
-        playback.finalize();
+        )).expect("Failed to interact with pattern");
+        playback.finalize().expect("Failed to finalize");
     }
 
     #[test]
@@ -263,7 +263,7 @@ mod tests {
             Kind::Message,
             "nonce",
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
@@ -272,8 +272,8 @@ mod tests {
             Kind::Public,
             "nonce",
             Length::Scalar,
-        ));
-        playback.finalize();
+        )).expect("Failed to interact with pattern");
+        playback.finalize().expect("Failed to finalize");
     }
 
     #[test]
@@ -287,7 +287,7 @@ mod tests {
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
@@ -296,8 +296,8 @@ mod tests {
             Kind::Challenge,
             "invalid",
             Length::Scalar,
-        ));
-        playback.finalize();
+        )).expect("Failed to interact with pattern");
+        playback.finalize().expect("Failed to finalize");
     }
 
     #[test]
@@ -311,7 +311,7 @@ mod tests {
             Kind::Challenge,
             "nonce",
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
@@ -320,7 +320,7 @@ mod tests {
             Kind::Challenge,
             "nonce",
             Length::Fixed(1),
-        ));
-        playback.finalize();
+        )).expect("Failed to interact with pattern");
+        playback.finalize().expect("Failed to finalize");
     }
 }

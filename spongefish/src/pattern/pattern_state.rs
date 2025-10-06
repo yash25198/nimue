@@ -132,7 +132,7 @@ where
             Kind::Protocol,
             "ratchet",
             Length::None,
-        ));
+        )).expect("Failed to interact with pattern");
     }
 
     fn public_unit(&mut self, label: Label) {
@@ -141,7 +141,7 @@ where
             Kind::Public,
             label,
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
     }
 
     fn public_units(&mut self, label: Label, size: usize) {
@@ -150,7 +150,7 @@ where
             Kind::Public,
             label,
             Length::Fixed(size),
-        ));
+        )).expect("Failed to interact with pattern");
     }
 
     fn message_unit(&mut self, label: Label) {
@@ -159,7 +159,7 @@ where
             Kind::Message,
             label,
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
     }
 
     fn message_units(&mut self, label: Label, size: usize) {
@@ -168,7 +168,7 @@ where
             Kind::Message,
             label,
             Length::Fixed(size),
-        ));
+        )).expect("Failed to interact with pattern");
     }
 
     fn challenge_unit(&mut self, label: Label) {
@@ -177,7 +177,7 @@ where
             Kind::Challenge,
             label,
             Length::Scalar,
-        ));
+        )).expect("Failed to interact with pattern");
     }
 
     fn challenge_units(&mut self, label: Label, size: usize) {
@@ -186,7 +186,7 @@ where
             Kind::Challenge,
             label,
             Length::Fixed(size),
-        ));
+        )).expect("Failed to interact with pattern");
     }
 
     fn hint_bytes(&mut self, label: Label, size: usize) {
@@ -195,7 +195,7 @@ where
             Kind::Hint,
             label,
             Length::Fixed(size),
-        ));
+        )).expect("Failed to interact with pattern");
     }
 
     fn hint_bytes_dynamic(&mut self, label: Label) {
@@ -204,6 +204,6 @@ where
             Kind::Hint,
             label,
             Length::Dynamic,
-        ));
+        )).expect("Failed to interact with pattern");
     }
 }

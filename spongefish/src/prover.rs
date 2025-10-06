@@ -125,9 +125,9 @@ where
         self.pattern.peek_next()
     }
 
-    pub fn add_units(&mut self, input: &[U]) {
+    pub fn add_units(&mut self, input: &[U]) -> Result<(), crate::pattern::PatternError> {
         // Consume Begin Message interactions
-        self.pattern.consume_begin(Kind::Message);
+        self.pattern.consume_begin(Kind::Message)?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
@@ -135,15 +135,17 @@ where
             Kind::Message,
             "units",
             Length::Fixed(input.len()),
-        ));
+        ))?;
 
         self.duplex_sponge.absorb_unchecked(input);
         let old_len = self.narg_string.len();
-        U::write(input, &mut self.narg_string).unwrap();
+        U::write(input, &mut self.narg_string).map_err(|_| crate::pattern::PatternError::AlreadyFinalized)?;
         self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
 
         // Consume End Message interactions
-        self.pattern.consume_end(Kind::Message);
+        self.pattern.consume_end(Kind::Message)?;
+        
+        Ok(())
     }
 
     pub fn ratchet(&mut self) {
@@ -152,7 +154,7 @@ where
             Kind::Protocol,
             "ratchet",
             Length::None,
-        ));
+        )).expect("Failed to interact with pattern");
         self.duplex_sponge.ratchet_unchecked();
     }
 
@@ -162,21 +164,21 @@ where
             Kind::Hint,
             "hint_bytes",
             Length::Dynamic,
-        ));
+        )).expect("Failed to interact with pattern");
         let len = u32::try_from(hint.len()).expect("Hint size out of bounds");
         self.narg_string.extend_from_slice(&len.to_le_bytes());
         self.narg_string.extend_from_slice(hint);
     }
 
     pub fn abort(mut self) {
-        self.pattern.abort();
+        self.pattern.abort().expect("Failed to abort pattern");
         self.duplex_sponge.zeroize();
         self.rng.ds.zeroize();
         self.narg_string.zeroize();
     }
 
     pub fn finalize(mut self) -> Vec<u8> {
-        self.pattern.finalize();
+        self.pattern.finalize().expect("Failed to finalize pattern");
         self.duplex_sponge.zeroize();
         self.rng.ds.zeroize();
         self.narg_string
@@ -202,7 +204,7 @@ where
     /// They are however absorbed into the verifier's sponge for Fiat-Shamir, and used to re-seed the prover state.
     fn public_units(&mut self, input: &[U]) {
         // Consume Begin Public interactions
-        self.pattern.consume_begin(Kind::Public);
+        self.pattern.consume_begin(Kind::Public).expect("Failed to consume begin");
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
@@ -210,7 +212,7 @@ where
             Kind::Public,
             "public_units",
             Length::Fixed(input.len()),
-        ));
+        )).expect("Failed to interact with pattern");
 
         self.duplex_sponge.absorb_unchecked(input);
         let old_len = self.narg_string.len();
@@ -219,13 +221,13 @@ where
         self.narg_string.truncate(old_len);
 
         // Consume End Public interactions
-        self.pattern.consume_end(Kind::Public);
+        self.pattern.consume_end(Kind::Public).expect("Failed to consume end");
     }
 
     /// Fill a slice with uniformly-distributed challenges from the verifier.
     fn fill_challenge_units(&mut self, output: &mut [U]) {
         // Consume Begin Challenge interactions
-        self.pattern.consume_begin(Kind::Challenge);
+        self.pattern.consume_begin(Kind::Challenge).expect("Failed to consume begin");
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
@@ -233,12 +235,12 @@ where
             Kind::Challenge,
             "units",
             Length::Fixed(output.len()),
-        ));
+        )).expect("Failed to interact with pattern");
 
         self.duplex_sponge.squeeze_unchecked(output);
 
         // Consume End Challenge interactions
-        self.pattern.consume_end(Kind::Challenge);
+        self.pattern.consume_end(Kind::Challenge).expect("Failed to consume end");
     }
 }
 
@@ -275,7 +277,7 @@ mod tests {
     #[test]
     fn test_prover_state_add_units_and_rng_differs() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_bytes("bytes", 4);
+        pattern.message_bytes("bytes", 4).expect("Failed to add message bytes");
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
@@ -386,7 +388,7 @@ mod tests {
     #[test]
     fn test_rng_entropy_changes_with_transcript() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_bytes("bytes", 3);
+        pattern.message_bytes("bytes", 3).expect("Failed to add message bytes");
         let pattern = pattern.finalize();
 
         let mut p1: ProverState = ProverState::from(&pattern);

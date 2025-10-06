@@ -38,9 +38,9 @@ fn test_prover_rng_basic() {
 fn test_prover_bytewriter_correct() {
     // Expect exactly one add_bytes call.
     let mut pattern = PatternState::<u8>::new();
-    pattern.begin_message::<u8>("bytes", Length::Fixed(1));
+    pattern.begin_message::<u8>("bytes", Length::Fixed(1)).expect("Failed to begin message");
     pattern.message_units("units", 1);
-    pattern.end_message::<u8>("bytes", Length::Fixed(1));
+    pattern.end_message::<u8>("bytes", Length::Fixed(1)).expect("Failed to end message");
     let pattern = pattern.finalize();
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
@@ -56,9 +56,9 @@ fn test_prover_bytewriter_correct() {
 fn test_prover_bytewriter_invalid() {
     // Expect exactly one add_bytes call.
     let mut pattern = PatternState::<u8>::new();
-    pattern.begin_message::<u8>("bytes", Length::Fixed(1));
+    pattern.begin_message::<u8>("bytes", Length::Fixed(1)).expect("Failed to begin message");
     pattern.message_units("units", 1);
-    pattern.end_message::<u8>("bytes", Length::Fixed(1));
+    pattern.end_message::<u8>("bytes", Length::Fixed(1)).expect("Failed to end message");
     let pattern = pattern.finalize();
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
@@ -226,9 +226,9 @@ where
     let bytes = b"yellow submarine";
 
     let mut pattern = PatternState::<u8>::new();
-    pattern.begin_message::<u8>("bytes", Length::Fixed(16));
+    pattern.begin_message::<u8>("bytes", Length::Fixed(16)).expect("Failed to begin message");
     pattern.message_units("units", 16);
-    pattern.end_message::<u8>("bytes", Length::Fixed(16));
+    pattern.end_message::<u8>("bytes", Length::Fixed(16)).expect("Failed to end message");
     pattern.challenge_units("fill_challenge_units", 16);
     let pattern = pattern.finalize();
 

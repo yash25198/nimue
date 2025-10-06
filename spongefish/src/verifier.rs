@@ -59,7 +59,7 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     #[inline]
     pub fn fill_next_units(&mut self, input: &mut [U]) -> Result<(), std::io::Error> {
         // Consume Begin Message interactions
-        self.pattern.consume_begin(Kind::Message);
+        self.pattern.consume_begin(Kind::Message).expect("Failed to consume begin");
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
@@ -67,13 +67,13 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             Kind::Message,
             "units",
             Length::Fixed(input.len()),
-        ));
+        )).expect("Failed to interact with pattern");
 
         U::read(&mut self.narg_string, input)?;
         self.duplex_sponge.absorb_unchecked(input);
 
         // Consume End Message interactions
-        self.pattern.consume_end(Kind::Message);
+        self.pattern.consume_end(Kind::Message).expect("Failed to consume end");
 
         Ok(())
     }
@@ -85,7 +85,7 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             Kind::Hint,
             "hint_bytes",
             Length::Dynamic,
-        ));
+        )).expect("Failed to interact with pattern");
 
         // Ensure at least 4 bytes are available for the length prefix
         if self.narg_string.len() < 4 {
@@ -125,7 +125,7 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             Kind::Protocol,
             "ratchet",
             Length::None,
-        ));
+        )).expect("Failed to interact with pattern");
         self.duplex_sponge.ratchet_unchecked();
     }
 
@@ -133,12 +133,12 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     ///
     /// Any remaining expected interactions are discarded.
     pub fn abort(mut self) {
-        self.pattern.abort();
+        self.pattern.abort().expect("Failed to abort pattern");
     }
 
     /// Finalize the verifier session, asserting all interactions were consumed.
     pub fn finalize(self) {
-        self.pattern.finalize();
+        self.pattern.finalize().expect("Failed to finalize pattern");
     }
 }
 
@@ -147,7 +147,7 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'
     #[inline]
     fn public_units(&mut self, input: &[U]) {
         // Consume Begin Public interactions
-        self.pattern.consume_begin(Kind::Public);
+        self.pattern.consume_begin(Kind::Public).expect("Failed to consume begin");
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
@@ -155,19 +155,19 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'
             Kind::Public,
             "public_units",
             Length::Fixed(input.len()),
-        ));
+        )).expect("Failed to interact with pattern");
 
         self.duplex_sponge.absorb_unchecked(input);
 
         // Consume End Public interactions
-        self.pattern.consume_end(Kind::Public);
+        self.pattern.consume_end(Kind::Public).expect("Failed to consume end");
     }
 
     /// Fill `input` with units sampled uniformly at random.
     #[inline]
     fn fill_challenge_units(&mut self, input: &mut [U]) {
         // Consume Begin Challenge interactions
-        self.pattern.consume_begin(Kind::Challenge);
+        self.pattern.consume_begin(Kind::Challenge).expect("Failed to consume begin");
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
@@ -175,12 +175,12 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'
             Kind::Challenge,
             "units",
             Length::Fixed(input.len()),
-        ));
+        )).expect("Failed to interact with pattern");
 
         self.duplex_sponge.squeeze_unchecked(input);
 
         // Consume End Challenge interactions
-        self.pattern.consume_end(Kind::Challenge);
+        self.pattern.consume_end(Kind::Challenge).expect("Failed to consume end");
     }
 }
 
@@ -345,7 +345,7 @@ mod tests {
     #[test]
     fn test_fill_next_bytes_impl() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_bytes("bytes", 3);
+        pattern.message_bytes("bytes", 3).expect("Failed to add message bytes");
         let pattern = pattern.finalize();
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"xyz");
