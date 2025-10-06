@@ -7,7 +7,10 @@ use spongefish::{
     define_protocol,
     pattern::{PatternState, Pattern as _},
     typed::{Prover, Verifier, S0},
-    codecs::unit::Pattern as _,
+    codecs::{
+        arkworks_algebra::{FieldPattern, GroupPattern},
+        unit::Pattern as _,
+    },
 };
 
 // First, let's compute the actual IV from the pattern
@@ -16,14 +19,14 @@ fn compute_protocol_iv() -> (u128, u128) {
     
     let mut g_bytes = Vec::new();
     Curve::generator().serialize_compressed(&mut g_bytes).unwrap();
-    pattern.message_units("generator", g_bytes.len());
-    pattern.message_units("public_key", 32);
-    pattern.ratchet();
-    pattern.message_units("commitment", 32);
-    pattern.challenge_units("challenge", 16);
-    pattern.message_units("response", 32);
-    
-    let pattern = pattern.finalize();
+     <PatternState<u8> as GroupPattern<Curve>>::message_points(&mut pattern, "generator", 1);
+     <PatternState<u8> as GroupPattern<Curve>>::message_points(&mut pattern, "public_key", 1);
+     pattern.ratchet();
+     <PatternState<u8> as GroupPattern<Curve>>::message_points(&mut pattern, "commitment", 1);
+     <PatternState<u8> as FieldPattern<<Curve as ark_ec::PrimeGroup>::ScalarField>>::challenge_scalars(&mut pattern, "challenge", 1);
+     <PatternState<u8> as FieldPattern<<Curve as ark_ec::PrimeGroup>::ScalarField>>::message_scalars(&mut pattern, "response", 1);
+     
+     let pattern = pattern.finalize();
     let iv = pattern.domain_separator();
     
     let iv0 = u128::from_le_bytes(iv[0..16].try_into().unwrap());
@@ -37,7 +40,7 @@ fn compute_protocol_iv() -> (u128, u128) {
 
 // Actual computed IVs - you'll need to run compute_protocol_iv() once to get these values
 define_protocol! {
-    pub protocol SchnorrTyped IV0 = 0x7737ae506738c6557fdd6f1be1fecda1u128; IV1 =  0xe3b25bd9b1147ae830ce763f3861d640u128;  
+    pub protocol SchnorrTyped IV0 = 0x7fd51c08749c8d371f1217b227e01b84u128; IV1 = 0x61b86269f42dfaf9c9e8ec94ac5eaff7u128;  
     steps {
         message_units msg_g "generator";
         message_units msg_pk "public_key";
@@ -56,38 +59,27 @@ fn main() {
 fn run_typestated_protocol() {
     let mut pattern = PatternState::<u8>::new();
     
-    // Define the protocol structure
-    let mut g_bytes = Vec::new();
-    Curve::generator().serialize_compressed(&mut g_bytes).unwrap();
-    pattern.message_units("generator", g_bytes.len());
-    
-    let pk_bytes = 32; // Compressed curve point
-    pattern.message_units("public_key", pk_bytes);
-    
+    <PatternState<u8> as GroupPattern<Curve>>::message_points(&mut pattern, "generator", 1);
+    <PatternState<u8> as GroupPattern<Curve>>::message_points(&mut pattern, "public_key", 1);
     pattern.ratchet();
-    
-    let com_bytes = 32; // Compressed curve point
-    pattern.message_units("commitment", com_bytes);
-    
-    pattern.challenge_units("challenge", 16);
-    
-    let resp_bytes = 32; // Fr serialized size
-    pattern.message_units("response", resp_bytes);
+    <PatternState<u8> as GroupPattern<Curve>>::message_points(&mut pattern, "commitment", 1);
+    <PatternState<u8> as FieldPattern<<Curve as ark_ec::PrimeGroup>::ScalarField>>::challenge_scalars(&mut pattern, "challenge", 1);
+    <PatternState<u8> as FieldPattern<<Curve as ark_ec::PrimeGroup>::ScalarField>>::message_scalars(&mut pattern, "response", 1);
     
     let pattern = Arc::new(pattern.finalize());
     
-    // Prover's values
-    let g = g_bytes;
-    let pk = vec![1u8; 32];
-    let com = vec![2u8; 32];
-    let mut chal = vec![0u8; 16];
-    let resp = vec![42u8; 32];
+    // Prover's values - using byte arrays that match the hierarchical pattern
+    let g = vec![1u8; 32]; // Generator bytes
+    let pk = vec![2u8; 32]; // Public key bytes
+    let com = vec![3u8; 32]; // Commitment bytes
+    let mut chal = vec![0u8; 47]; // Challenge bytes (will be filled)
+    let resp = vec![4u8; 32]; // Response bytes
     
     // Verifier's values (will be filled)
-    let mut vg = vec![0u8; g.len()];
+    let mut vg = vec![0u8; 32];
     let mut vpk = vec![0u8; 32];
     let mut vcom = vec![0u8; 32];
-    let mut vchal = vec![0u8; 16];
+    let mut vchal = vec![0u8; 47];
     let mut vresp = vec![0u8; 32];
     
     // Create typed prover - use the new constructor that doesn't check IVs
