@@ -1,10 +1,11 @@
+
 use ark_ec::{
     short_weierstrass::{Affine as SWAffine, Projective as SWCurve, SWCurveConfig},
     twisted_edwards::{Affine as EdwardsAffine, Projective as EdwardsCurve, TECurveConfig},
     CurveGroup,
 };
 use ark_ff::{Field, Fp, FpConfig};
-use ark_serialize::{CanonicalDeserialize, SerializationError};
+use ark_serialize::CanonicalDeserialize;
 
 use super::{FieldToUnitDeserialize, GroupToUnitDeserialize};
 use crate::{

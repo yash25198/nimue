@@ -7,7 +7,7 @@ use rand::{CryptoRng, RngCore};
 
 use super::{CommonFieldToUnit, CommonGroupToUnit, UnitToField};
 use crate::{
-    codecs::bytes_uniform_modp, CommonUnitToBytes, DuplexSpongeInterface, ProofError, ProofResult,
+    codecs::bytes_uniform_modp, CommonUnitToBytes, DuplexSpongeInterface, ProofError,
     ProverState, Unit, UnitToBytes, UnitTranscript, VerifierState,
 };
 
@@ -51,7 +51,7 @@ where
         for i in input {
             // Serialization should be infallible
             i.serialize_compressed(&mut buf)
-                .expect("Serialization failed.");
+                .expect("Serialization failed");
         }
 
         // Only absorb into sponge if we're not in a hierarchical context
@@ -72,9 +72,9 @@ where
         for i in input {
             // Writing to buffer should be infallible
             i.serialize_compressed(&mut buf)
-                .expect("Serialization failed.");
+                .expect("Serialization failed");
         }
-        self.public_bytes(&buf);
+        let _ = self.public_bytes(&buf);
         buf
     }
 }
@@ -105,7 +105,7 @@ where
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
     fn fill_challenge_scalars(&mut self, output: &mut [Fp<C, N>]) {
-        self.fill_challenge_units(output);
+        let _ = self.fill_challenge_units(output);
     }
 }
 
@@ -116,7 +116,7 @@ where
     R: CryptoRng + RngCore,
 {
     fn fill_challenge_scalars(&mut self, output: &mut [Fp<C, N>]) {
-        self.fill_challenge_units(output);
+        let _ = self.fill_challenge_units(output);
     }
 }
 
@@ -253,7 +253,7 @@ where
                 output.len(),
             );
             let mut tmp = [Fp::from(0); 1];
-            self.fill_challenge_units(&mut tmp);
+            let _ = self.fill_challenge_units(&mut tmp);
             let buf = tmp[0].into_bigint().to_bytes_le();
             output[..len_good].copy_from_slice(&buf[..len_good]);
 
@@ -276,7 +276,7 @@ where
                 output.len(),
             );
             let mut tmp = [Fp::from(0); 1];
-            self.fill_challenge_units(&mut tmp);
+            let _ = self.fill_challenge_units(&mut tmp);
             let buf = tmp[0].into_bigint().to_bytes_le();
             output[..len_good].copy_from_slice(&buf[..len_good]);
 

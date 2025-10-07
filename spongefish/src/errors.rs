@@ -47,3 +47,9 @@ impl From<std::io::Error> for ProofError {
         Self::SerializationError
     }
 }
+
+impl From<crate::pattern::PatternError> for ProofError {
+    fn from(_value: crate::pattern::PatternError) -> Self {
+        Self::SerializationError
+    }
+}

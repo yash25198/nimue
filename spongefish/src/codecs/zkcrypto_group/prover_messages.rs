@@ -10,10 +10,14 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_scalars(&mut self, input: &[F]) {
+    fn add_scalars(&mut self, input: &[F]) -> &mut Self {
+        // Execute any queued operations first
+        self.execute_queued().expect("Failed to execute queued operations");
+        
         let mut buf = Vec::new();
         input.iter().for_each(|i| buf.extend(i.to_repr().as_ref()));
         self.add_bytes(&buf);
+        self
     }
 }
 
@@ -42,12 +46,16 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_points(&mut self, input: &[G]) {
+    fn add_points(&mut self, input: &[G]) -> &mut Self {
+        // Execute any queued operations first
+        self.execute_queued().expect("Failed to execute queued operations");
+        
         let mut buf = Vec::new();
         for p in input {
             buf.extend_from_slice(<G as GroupEncoding>::to_bytes(p).as_ref());
         }
         self.add_bytes(&buf);
+        self
     }
 }
 

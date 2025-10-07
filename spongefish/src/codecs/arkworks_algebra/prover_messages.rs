@@ -1,11 +1,12 @@
+
 use ark_ec::CurveGroup;
 use ark_ff::{Field, Fp, FpConfig};
 use ark_serialize::CanonicalSerialize;
 use rand::{CryptoRng, RngCore};
 
-use super::{CommonFieldToUnit, CommonGroupToUnit, FieldToUnitSerialize, GroupToUnitSerialize};
+use super::{CommonGroupToUnit, FieldToUnitSerialize, GroupToUnitSerialize};
 use crate::{
-    pattern::{Hierarchy, Interaction, Kind, Length, Pattern},
+    pattern::{Hierarchy, Interaction, Kind, Length},
     BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, DuplexSpongeInterface,
     ProverState, Unit, UnitTranscript, VerifierState,
 };
@@ -13,11 +14,14 @@ use crate::{
 impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSerialize<F>
     for ProverState<H, u8, R>
 {
-    fn add_scalars(&mut self, input: &[F]) {
+    fn add_scalars(&mut self, input: &[F]) -> &mut Self {
+        // Execute any queued operations first
+        self.execute_queued().expect("Failed to execute queued operations");
+        
         // Consume all Begin interactions for messages
         while let Some(next) = self.pattern.peek_next() {
             if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
+                let _ = self.pattern.interact(next.clone());
             } else {
                 break;
             }
@@ -31,7 +35,7 @@ impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSeri
         }
 
         // The atomic interaction
-        self.pattern.interact(Interaction::new::<u8>(
+        let _ = self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
             "units",
@@ -45,11 +49,13 @@ impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSeri
         // Consume all End interactions for messages
         while let Some(next) = self.pattern.peek_next() {
             if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
+                let _ = self.pattern.interact(next.clone());
             } else {
                 break;
             }
         }
+        
+        self
     }
 }
 
@@ -60,13 +66,17 @@ impl<
         const N: usize,
     > FieldToUnitSerialize<Fp<C, N>> for ProverState<H, Fp<C, N>, R>
 {
-    fn add_scalars(&mut self, input: &[Fp<C, N>]) {
-        self.public_units(input);
+    fn add_scalars(&mut self, input: &[Fp<C, N>]) -> &mut Self {
+        // Execute any queued operations first
+        self.execute_queued().expect("Failed to execute queued operations");
+        
+        let _ = self.public_units(input);
         for i in input {
             // Serialization should be infallible.
             i.serialize_compressed(&mut self.narg_string)
                 .expect("Serialization failed");
         }
+        self
     }
 }
 
@@ -76,16 +86,10 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_points(&mut self, input: &[G]) {
-        // Consume all Begin interactions
-        while let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
-
+    fn add_points(&mut self, input: &[G]) -> &mut Self {
+        // Execute any queued operations first
+        self.execute_queued().expect("Failed to execute queued operations");
+        
         // Serialize
         let mut serialized = Vec::new();
         for p in input {
@@ -93,26 +97,9 @@ where
                 .expect("Serialization failed");
         }
 
-        // The atomic interaction
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            "units",
-            Length::Fixed(serialized.len()),
-        ));
-
-        self.duplex_sponge.absorb_unchecked(&serialized);
-        self.narg_string.extend(&serialized);
-        self.rng.ds.absorb_unchecked(&serialized);
-
-        // Consume all End interactions
-        while let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // Use the existing add_units method which handles the pattern correctly
+        let _ = self.add_units(&serialized);
+        self
     }
 }
 
@@ -124,12 +111,16 @@ where
     R: RngCore + CryptoRng,
     Self: CommonGroupToUnit<G> + FieldToUnitSerialize<G::BaseField>,
 {
-    fn add_points(&mut self, input: &[G]) {
-        self.public_points(input);
+    fn add_points(&mut self, input: &[G]) -> &mut Self {
+        // Execute any queued operations first
+        self.execute_queued().expect("Failed to execute queued operations");
+        
+        let _ = self.public_points(input);
         for i in input {
             i.serialize_compressed(&mut self.narg_string)
                 .expect("Serialization failed");
         }
+        self
     }
 }
 
@@ -139,9 +130,10 @@ where
     C: FpConfig<N>,
     R: RngCore + CryptoRng,
 {
-    fn add_bytes(&mut self, input: &[u8]) {
+    fn add_bytes(&mut self, input: &[u8]) -> Result<(), crate::pattern::PatternError> {
         self.public_bytes(input);
         self.narg_string.extend(input);
+        Ok(())
     }
 }
 
@@ -150,8 +142,8 @@ where
     H: DuplexSpongeInterface<Fp<C, N>>,
     C: FpConfig<N>,
 {
-    fn fill_next_bytes(&mut self, input: &mut [u8]) -> Result<(), std::io::Error> {
-        u8::read(&mut self.narg_string, input)?;
+    fn fill_next_bytes(&mut self, input: &mut [u8]) -> Result<(), crate::pattern::PatternError> {
+        u8::read(&mut self.narg_string, input).map_err(|_| crate::pattern::PatternError::ValidationError("Failed to read bytes".to_string()))?;
         self.public_bytes(input);
         Ok(())
     }

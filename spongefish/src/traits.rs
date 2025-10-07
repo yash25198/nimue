@@ -6,9 +6,9 @@ use crate::Unit;
 /// Implementors of this trait are expected to make sure that the unit type `U` matches
 /// the one used by the internal sponge.
 pub trait UnitTranscript<U: Unit> {
-    fn public_units(&mut self, input: &[U]);
+    fn public_units(&mut self, input: &[U]) -> &mut Self;
 
-    fn fill_challenge_units(&mut self, output: &mut [U]);
+    fn fill_challenge_units(&mut self, output: &mut [U]) -> Result<(), crate::pattern::PatternError>;
 }
 
 /// Absorbing bytes from the sponge, without reading or writing them into the protocol transcript.
@@ -46,9 +46,9 @@ pub trait UnitToBytes {
 pub trait ByteTranscript: CommonUnitToBytes + UnitToBytes {}
 
 pub trait BytesToUnitDeserialize {
-    fn fill_next_bytes(&mut self, input: &mut [u8]) -> Result<(), std::io::Error>;
+    fn fill_next_bytes(&mut self, input: &mut [u8]) -> Result<(), crate::pattern::PatternError>;
 
-    fn next_bytes<const N: usize>(&mut self) -> Result<[u8; N], std::io::Error> {
+    fn next_bytes<const N: usize>(&mut self) -> Result<[u8; N], crate::pattern::PatternError> {
         let mut input = [0u8; N];
         self.fill_next_bytes(&mut input)?;
         Ok(input)
@@ -56,7 +56,7 @@ pub trait BytesToUnitDeserialize {
 }
 
 pub trait BytesToUnitSerialize {
-    fn add_bytes(&mut self, input: &[u8]);
+    fn add_bytes(&mut self, input: &[u8]) -> Result<(), crate::pattern::PatternError>;
 }
 
 /// Methods for adding bytes to the [`DomainSeparator`](crate::DomainSeparator), properly counting group elements.
@@ -79,6 +79,6 @@ impl<T: UnitTranscript<u8>> CommonUnitToBytes for T {
 impl<T: UnitTranscript<u8>> UnitToBytes for T {
     #[inline]
     fn fill_challenge_bytes(&mut self, output: &mut [u8]) {
-        self.fill_challenge_units(output);
+        let _ = self.fill_challenge_units(output);
     }
 }

@@ -21,7 +21,7 @@ use spongefish::{
         },
         unit::Pattern, // Import Pattern trait for ratchet() method
     },
-    pattern::{InteractionPattern, PatternState},
+    pattern::{InteractionPattern, Pattern as PatternTrait, PatternState},
     DefaultHash, ProofError, ProofResult, ProverState, VerifierState,
 };
 
@@ -32,16 +32,17 @@ where
     let mut pattern = PatternState::<u8>::new();
 
     // Statement: generator and public key (public inputs)
-    pattern.message_points("generator", 1);
-    pattern.message_points("public_key", 1);
-    pattern.ratchet();
+    pattern
+        .begin_protocol::<str>("schnorr_proof")
+        .message_points("generator", 1)
+        .message_points("public_key", 1)
+        .ratchet()
+        .message_points("commitment", 1)
+        .challenge_scalars("challenge", 1)
+        .message_scalars("response", 1)
+        .end_protocol::<str>("schnorr_proof");
 
-    // Proof: commitment, challenge, response
-    pattern.message_points("commitment", 1);
-    pattern.challenge_scalars("challenge", 1);
-    pattern.message_scalars("response", 1);
-
-    pattern.finalize()
+    pattern.finalize().unwrap()
 }
 /// Key generation: returns (secret_key, public_key)
 fn keygen<G: CurveGroup>() -> (G::ScalarField, G) {
@@ -129,21 +130,28 @@ fn main() {
     // Prover: create proof
     let mut prover = ProverState::new(pattern.clone(), OsRng);
 
-    // Add statement (public inputs)
-    prover.add_points(&[P]);
-    prover.add_points(&[X]);
-    prover.ratchet();
+    // Begin protocol
+    prover
+        .begin_protocol()
+        .add_points(&[P])
+        .add_points(&[P * x])
+        .ratchet();
 
-    // Generate proof
+    // Prove (this handles the proof part)
     prove(&mut prover, P, x).expect("Proving failed");
-    let proof = prover.finalize();
+
+    // End protocol
+    prover.end_protocol();
+
+    let proof = prover.finalize().expect("Finalizing proof failed");
 
     // Verifier: verify proof
     let mut verifier = VerifierState::new(pattern.clone(), &proof);
 
-    // Read statement
+    // Begin protocol
     let mut statement = [G::default(); 2];
     verifier
+        .begin_protocol()
         .fill_next_points(&mut statement)
         .expect("Failed to read statement");
     let (P_recv, X_recv) = (statement[0], statement[1]);
@@ -151,7 +159,8 @@ fn main() {
 
     // Verify proof
     verify(&mut verifier, P_recv, X_recv).expect("Verification failed");
-    verifier.finalize();
+    verifier.end_protocol();
+    verifier.finalize().expect("Finalize failed");
 
     println!("✓ Proof verified successfully");
 }

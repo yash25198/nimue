@@ -10,6 +10,18 @@ use crate::{
     BytesToUnitSerialize, UnitTranscript,
 };
 
+/// Queued operations for ProverState builder pattern
+#[derive(Debug, Clone)]
+pub enum QueuedProverOp<U: Unit> {
+    BeginProtocol,
+    EndProtocol,
+    AddUnits(Vec<U>),
+    PublicUnits(Vec<U>),
+    Ratchet,
+    HintBytes(Vec<u8>),
+}
+
+
 /// [`ProverState`] is the prover state of an interactive proof (IP) system.
 /// It internally holds the **secret coins** of the prover for zero-knowledge, and
 /// has the hash function state for the verifier state.
@@ -38,6 +50,8 @@ where
     pub(crate) duplex_sponge: H,
     /// The encoded data.
     pub(crate) narg_string: Vec<u8>,
+    /// Queued operations to be executed on finalize
+    pub(crate) queued_ops: Vec<QueuedProverOp<U>>,
     /// Unit type
     pub(crate) _unit_type: PhantomData<U>,
 }
@@ -116,6 +130,7 @@ where
             rng,
             duplex_sponge: H::new(iv),
             narg_string: Vec::new(),
+            queued_ops: Vec::new(),
             _unit_type: PhantomData,
         }
     }
@@ -125,63 +140,137 @@ where
         self.pattern.peek_next()
     }
 
-    pub fn add_units(&mut self, input: &[U]) -> Result<(), crate::pattern::PatternError> {
-        // Consume Begin Message interactions
-        self.pattern.consume_begin(Kind::Message)?;
-
-        // Process the atomic interaction
-        self.pattern.interact(Interaction::new::<U>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            "units",
-            Length::Fixed(input.len()),
-        ))?;
-
-        self.duplex_sponge.absorb_unchecked(input);
-        let old_len = self.narg_string.len();
-        U::write(input, &mut self.narg_string).map_err(|_| crate::pattern::PatternError::AlreadyFinalized)?;
-        self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
-
-        // Consume End Message interactions
-        self.pattern.consume_end(Kind::Message)?;
-        
-        Ok(())
+    pub fn add_units(&mut self, input: &[U]) -> &mut Self {
+        self.queued_ops.push(QueuedProverOp::AddUnits(input.to_vec()));
+        self
     }
 
-    pub fn ratchet(&mut self) {
-        self.pattern.interact(Interaction::new::<()>(
-            Hierarchy::Atomic,
-            Kind::Protocol,
-            "ratchet",
-            Length::None,
-        )).expect("Failed to interact with pattern");
-        self.duplex_sponge.ratchet_unchecked();
+    pub fn begin_protocol(&mut self) -> &mut Self {
+        self.queued_ops.push(QueuedProverOp::BeginProtocol);
+        self
     }
 
-    pub fn hint_bytes(&mut self, hint: &[u8]) {
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Hint,
-            "hint_bytes",
-            Length::Dynamic,
-        )).expect("Failed to interact with pattern");
-        let len = u32::try_from(hint.len()).expect("Hint size out of bounds");
-        self.narg_string.extend_from_slice(&len.to_le_bytes());
-        self.narg_string.extend_from_slice(hint);
+    pub fn end_protocol(&mut self) -> &mut Self {
+        self.queued_ops.push(QueuedProverOp::EndProtocol);
+        self
     }
 
-    pub fn abort(mut self) {
-        self.pattern.abort().expect("Failed to abort pattern");
+    pub fn ratchet(&mut self) -> &mut Self {
+        self.queued_ops.push(QueuedProverOp::Ratchet);
+        self
+    }
+
+    pub fn hint_bytes(&mut self, hint: &[u8]) -> &mut Self {
+        self.queued_ops.push(QueuedProverOp::HintBytes(hint.to_vec()));
+        self
+    }
+
+    pub fn abort(mut self) -> Result<(), crate::pattern::PatternError> {
+        self.pattern.abort()?;
         self.duplex_sponge.zeroize();
         self.rng.ds.zeroize();
         self.narg_string.zeroize();
+        Ok(())
     }
 
-    pub fn finalize(mut self) -> Vec<u8> {
-        self.pattern.finalize().expect("Failed to finalize pattern");
+    /// Execute all queued operations
+    pub(crate) fn execute_queued(&mut self) -> Result<(), crate::pattern::PatternError> {
+        for op in self.queued_ops.drain(..) {
+            match op {
+                QueuedProverOp::BeginProtocol => {
+                    // Consume Begin Protocol interactions
+                    while let Some(next) = self.pattern.peek_next() {
+                        if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Protocol {
+                            self.pattern.interact(next.clone())?;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                QueuedProverOp::EndProtocol => {
+                    // Consume End Protocol interactions
+                    while let Some(next) = self.pattern.peek_next() {
+                        if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Protocol {
+                            self.pattern.interact(next.clone())?;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                QueuedProverOp::AddUnits(input) => {
+                    // Consume Begin Message interactions
+                    self.pattern.consume_begin(Kind::Message)?;
+
+                    // Process the atomic interaction
+                    self.pattern.interact(Interaction::new::<U>(
+                        Hierarchy::Atomic,
+                        Kind::Message,
+                        "units",
+                        Length::Fixed(input.len()),
+                    ))?;
+
+                    self.duplex_sponge.absorb_unchecked(&input);
+                    let old_len = self.narg_string.len();
+                    U::write(&input, &mut self.narg_string).map_err(|_| crate::pattern::PatternError::AlreadyFinalized)?;
+                    self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
+
+                    // Consume End Message interactions
+                    self.pattern.consume_end(Kind::Message)?;
+                }
+                QueuedProverOp::PublicUnits(input) => {
+                    // Consume Begin Public interactions
+                    self.pattern.consume_begin(Kind::Public)?;
+
+                    // Process the atomic interaction
+                    self.pattern.interact(Interaction::new::<U>(
+                        Hierarchy::Atomic,
+                        Kind::Public,
+                        "public_units",
+                        Length::Fixed(input.len()),
+                    ))?;
+
+                    self.duplex_sponge.absorb_unchecked(&input);
+                    let old_len = self.narg_string.len();
+                    U::write(&input, &mut self.narg_string).map_err(|_| crate::pattern::PatternError::AlreadyFinalized)?;
+                    self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
+                    self.narg_string.truncate(old_len);
+
+                    // Consume End Public interactions
+                    self.pattern.consume_end(Kind::Public)?;
+                }
+                QueuedProverOp::Ratchet => {
+                    self.pattern.interact(Interaction::new::<()>(
+                        Hierarchy::Atomic,
+                        Kind::Protocol,
+                        "ratchet",
+                        Length::None,
+                    ))?;
+                    self.duplex_sponge.ratchet_unchecked();
+                }
+                QueuedProverOp::HintBytes(hint) => {
+                    self.pattern.interact(Interaction::new::<u8>(
+                        Hierarchy::Atomic,
+                        Kind::Hint,
+                        "hint_bytes",
+                        Length::Dynamic,
+                    ))?;
+                    let len = u32::try_from(hint.len()).map_err(|_| crate::pattern::PatternError::ValidationError("Hint size out of bounds".to_string()))?;
+                    self.narg_string.extend_from_slice(&len.to_le_bytes());
+                    self.narg_string.extend_from_slice(&hint);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn finalize(mut self) -> Result<Vec<u8>, crate::pattern::PatternError> {
+        // Execute all queued operations
+        self.execute_queued()?;
+        
+        self.pattern.finalize()?;
         self.duplex_sponge.zeroize();
         self.rng.ds.zeroize();
-        self.narg_string
+        Ok(self.narg_string)
     }
 
     pub fn rng(&mut self) -> &mut (impl CryptoRng + RngCore) {
@@ -202,32 +291,18 @@ where
     /// Add public messages to the protocol transcript.
     /// Messages input to this function are not added to the protocol transcript.
     /// They are however absorbed into the verifier's sponge for Fiat-Shamir, and used to re-seed the prover state.
-    fn public_units(&mut self, input: &[U]) {
-        // Consume Begin Public interactions
-        self.pattern.consume_begin(Kind::Public).expect("Failed to consume begin");
-
-        // Process the atomic interaction
-        self.pattern.interact(Interaction::new::<U>(
-            Hierarchy::Atomic,
-            Kind::Public,
-            "public_units",
-            Length::Fixed(input.len()),
-        )).expect("Failed to interact with pattern");
-
-        self.duplex_sponge.absorb_unchecked(input);
-        let old_len = self.narg_string.len();
-        U::write(input, &mut self.narg_string).unwrap();
-        self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
-        self.narg_string.truncate(old_len);
-
-        // Consume End Public interactions
-        self.pattern.consume_end(Kind::Public).expect("Failed to consume end");
+    fn public_units(&mut self, input: &[U]) -> &mut Self {
+        self.queued_ops.push(QueuedProverOp::PublicUnits(input.to_vec()));
+        self
     }
 
     /// Fill a slice with uniformly-distributed challenges from the verifier.
-    fn fill_challenge_units(&mut self, output: &mut [U]) {
+    fn fill_challenge_units(&mut self, output: &mut [U]) -> Result<(), crate::pattern::PatternError> {
+        // Execute any queued operations first
+        self.execute_queued()?;
+        
         // Consume Begin Challenge interactions
-        self.pattern.consume_begin(Kind::Challenge).expect("Failed to consume begin");
+        self.pattern.consume_begin(Kind::Challenge)?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
@@ -235,12 +310,13 @@ where
             Kind::Challenge,
             "units",
             Length::Fixed(output.len()),
-        )).expect("Failed to interact with pattern");
+        ))?;
 
         self.duplex_sponge.squeeze_unchecked(output);
 
         // Consume End Challenge interactions
-        self.pattern.consume_end(Kind::Challenge).expect("Failed to consume end");
+        self.pattern.consume_end(Kind::Challenge)?;
+        Ok(())
     }
 }
 
@@ -262,8 +338,9 @@ where
     H: DuplexSpongeInterface<u8>,
     R: RngCore + CryptoRng,
 {
-    fn add_bytes(&mut self, input: &[u8]) {
+    fn add_bytes(&mut self, input: &[u8]) -> Result<(), crate::pattern::PatternError> {
         self.add_units(input);
+        Ok(())
     }
 }
 #[cfg(test)]

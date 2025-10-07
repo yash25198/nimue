@@ -1,6 +1,5 @@
 //! Abstract interaction patterns for interactive protocols.
 
-pub mod helpers;
 mod interaction;
 mod interaction_pattern;
 mod pattern_player;
@@ -34,25 +33,25 @@ pub trait Pattern {
 
     /// Begin of a group of interactions.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError>;
+    /// Returns an error if the interaction violates interaction pattern consistency rules.
+    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError>;
 
     /// End of a group of interactions.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError>;
+    /// Returns an error if the interaction violates interaction pattern consistency rules.
+    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError>;
 
     /// Begin of a subprotocol.
     ///
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_protocol<T: ?Sized>(&mut self, label: Label) -> Result<(), PatternError> {
-        self.begin::<T>(label, Kind::Protocol, Length::None)
+    fn begin_protocol<T: ?Sized>(&mut self, label: Label) -> &mut Self {
+        self.begin::<T>(label, Kind::Protocol, Length::None).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 
     /// End of a subprotocol.
@@ -60,8 +59,8 @@ pub trait Pattern {
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_protocol<T: ?Sized>(&mut self, label: Label) -> Result<(), PatternError> {
-        self.end::<T>(label, Kind::Protocol, Length::None)
+    fn end_protocol<T: ?Sized>(&mut self, label: Label) -> &mut Self {
+        self.end::<T>(label, Kind::Protocol, Length::None).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 
     /// Begin of a public message interaction.
@@ -69,8 +68,8 @@ pub trait Pattern {
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_public<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
-        self.begin::<T>(label, Kind::Public, length)
+    fn begin_public<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+        self.begin::<T>(label, Kind::Public, length).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 
     /// End of a public message interaction.
@@ -78,8 +77,8 @@ pub trait Pattern {
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_public<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
-        self.end::<T>(label, Kind::Public, length)
+    fn end_public<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+        self.end::<T>(label, Kind::Public, length).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 
     /// Begin of a message interaction.
@@ -87,8 +86,8 @@ pub trait Pattern {
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_message<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
-        self.begin::<T>(label, Kind::Message, length)
+    fn begin_message<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+        self.begin::<T>(label, Kind::Message, length).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 
     /// End of a message interaction.
@@ -96,8 +95,8 @@ pub trait Pattern {
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_message<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
-        self.end::<T>(label, Kind::Message, length)
+    fn end_message<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+        self.end::<T>(label, Kind::Message, length).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 
     /// Begin of a hint interaction.
@@ -105,8 +104,8 @@ pub trait Pattern {
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
-        self.begin::<T>(label, Kind::Hint, length)
+    fn begin_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+        self.begin::<T>(label, Kind::Hint, length).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 
     /// End of a hint interaction..
@@ -114,8 +113,8 @@ pub trait Pattern {
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
-        self.end::<T>(label, Kind::Hint, length)
+    fn end_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+        self.end::<T>(label, Kind::Hint, length).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 
     /// Begin of a challenge interaction..
@@ -123,8 +122,8 @@ pub trait Pattern {
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
-        self.begin::<T>(label, Kind::Challenge, length)
+    fn begin_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+        self.begin::<T>(label, Kind::Challenge, length).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 
     /// End of a challenge interaction..
@@ -132,8 +131,8 @@ pub trait Pattern {
     /// # Panics
     ///
     /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
-        self.end::<T>(label, Kind::Challenge, length)
+    fn end_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+        self.end::<T>(label, Kind::Challenge, length).unwrap_or_else(|e| panic!("Pattern error: {}", e))
     }
 }
 

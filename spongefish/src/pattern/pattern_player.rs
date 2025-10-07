@@ -34,6 +34,10 @@ impl PatternPlayer {
         self.pattern.interactions().get(self.position)
     }
 
+    pub fn position(&self) -> usize {
+        self.position
+    }
+
     /// Consume all interactions of a specific hierarchy and kind
     pub fn consume_hierarchy(&mut self, hierarchy: Hierarchy, kind: Kind) -> Result<usize, PatternError> {
         let mut consumed = 0;
@@ -105,27 +109,6 @@ impl PatternPlayer {
         }
     }
 
-    /// Find the deepest atomic interaction within the current hierarchy
-    fn find_nested_atomic(&self, start: usize) -> Option<usize> {
-        let mut pos = start;
-        let mut depth = 0;
-
-        while pos < self.pattern.interactions().len() {
-            let interaction = &self.pattern.interactions()[pos];
-            match interaction.hierarchy() {
-                Hierarchy::Begin => depth += 1,
-                Hierarchy::End => {
-                    depth -= 1;
-                    if depth < 0 {
-                        return None; // We've gone past the hierarchy
-                    }
-                }
-                Hierarchy::Atomic => return Some(pos),
-            }
-            pos += 1;
-        }
-        None
-    }
 
     pub fn interact(&mut self, interaction: Interaction) -> Result<(), PatternError> {
         if self.finalized {
@@ -137,42 +120,7 @@ impl PatternPlayer {
             return Err(PatternError::NoMoreExpected { got: interaction });
         };
 
-        // Smart matching when auto_traverse is enabled
-        // Case 1: We expect a Begin but receive an Atomic
-        if expected.hierarchy() == Hierarchy::Begin && interaction.hierarchy() == Hierarchy::Atomic
-        {
-            // Find the atomic interaction nested within this hierarchy
-            if let Some(atomic_pos) = self.find_nested_atomic(self.position + 1) {
-                let nested_atomic = &self.pattern.interactions()[atomic_pos];
 
-                // Check if it matches (relaxed matching - just kind and hierarchy)
-                if nested_atomic.kind() == interaction.kind()
-                    && nested_atomic.hierarchy() == interaction.hierarchy()
-                {
-                    // Record that we entered this hierarchy
-                    self.hierarchy_stack.push(self.position);
-
-                    // Jump to after the atomic interaction
-                    self.position = atomic_pos + 1;
-
-                    // Now skip to the end of all open hierarchies
-                    while !self.hierarchy_stack.is_empty() {
-                        self.skip_to_matching_end();
-                    }
-
-                    return Ok(());
-                }
-            }
-        }
-
-        // Case 2: We expect an End but receive something else (auto-skip)
-        if expected.hierarchy() == Hierarchy::End && interaction.hierarchy() != Hierarchy::End {
-            // Skip this End and try matching again
-            self.position += 1;
-            return self.interact(interaction);
-        }
-
-        // Normal exact matching
         if expected != &interaction {
             self.finalized = true;
             return Err(PatternError::UnexpectedInteraction { expected: expected.clone(), got: interaction });
@@ -229,11 +177,13 @@ impl super::Pattern for PatternPlayer {
         self.hierarchy_stack.len()
     }
 
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError> {
-        self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length))
+    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+        self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length))?;
+        Ok(self)
     }
 
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError> {
-        self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length))
+    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+        self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length))?;
+        Ok(self)
     }
 }

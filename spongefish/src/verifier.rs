@@ -7,6 +7,16 @@ use crate::{
     DefaultHash,
 };
 
+
+/// Queued operations for VerifierState builder pattern
+#[derive(Debug, Clone)]
+pub enum QueuedVerifierOp<U: Unit> {
+    BeginProtocol,
+    EndProtocol,
+    PublicUnits(Vec<U>),
+    Ratchet,
+}
+
 /// [`VerifierState`] is the verifier state.
 ///
 /// Internally, it simply contains a stateful hash.
@@ -20,10 +30,15 @@ where
     pub(crate) pattern: PatternPlayer,
     pub(crate) duplex_sponge: H,
     pub(crate) narg_string: &'a [u8],
+    pub(crate) queued_ops: Vec<QueuedVerifierOp<U>>,
     pub(crate) _unit_type: PhantomData<U>,
 }
 
 impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
+    // VerifierState uses a hybrid approach:
+    // - Builder methods (begin_protocol, end_protocol, ratchet, public_units) are queued
+    // - Data methods (fill_next_units, fill_challenge_units, hint_bytes) are immediate
+    //   because they need to actually read/write data and return results
     /// Creates a new [`VerifierState`] instance with the given sponge and domain separator.
     ///
     /// The resulting object will act as the verifier in a zero-knowledge protocol.
@@ -47,6 +62,7 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             pattern: PatternPlayer::new(pattern),
             duplex_sponge: H::new(iv),
             narg_string,
+            queued_ops: Vec::new(),
             _unit_type: PhantomData,
         }
     }
@@ -56,10 +72,15 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         self.pattern.peek_next()
     }
 
+    /// Fill `input` with the next units from the NARG string.
+    /// This method is immediate (not queued) because it needs to actually read data.
     #[inline]
-    pub fn fill_next_units(&mut self, input: &mut [U]) -> Result<(), std::io::Error> {
+    pub fn fill_next_units(&mut self, input: &mut [U]) -> Result<(), crate::pattern::PatternError> {
+        // Execute any queued operations first
+        self.execute_queued()?;
+        
         // Consume Begin Message interactions
-        self.pattern.consume_begin(Kind::Message).expect("Failed to consume begin");
+        self.pattern.consume_begin(Kind::Message)?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
@@ -67,19 +88,23 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             Kind::Message,
             "units",
             Length::Fixed(input.len()),
-        )).expect("Failed to interact with pattern");
+        ))?;
 
-        U::read(&mut self.narg_string, input)?;
+        U::read(&mut self.narg_string, input).map_err(|_| crate::pattern::PatternError::AlreadyFinalized)?;
         self.duplex_sponge.absorb_unchecked(input);
 
         // Consume End Message interactions
-        self.pattern.consume_end(Kind::Message).expect("Failed to consume end");
+        self.pattern.consume_end(Kind::Message)?;
 
         Ok(())
     }
 
     /// Read a hint from the NARG string. Returns the number of units read.
+    /// This method is immediate (not queued) because it needs to actually read data.
     pub fn hint_bytes(&mut self) -> Result<&'a [u8], std::io::Error> {
+        // Execute any queued operations first
+        self.execute_queued().map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("Pattern error: {:?}", e)))?;
+        
         self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Hint,
@@ -117,57 +142,113 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         Ok(hint)
     }
 
+    pub fn begin_protocol(&mut self) -> &mut Self {
+        self.queued_ops.push(QueuedVerifierOp::BeginProtocol);
+        self
+    }
+
+    pub fn end_protocol(&mut self) -> &mut Self {
+        self.queued_ops.push(QueuedVerifierOp::EndProtocol);
+        self
+    }
+
     /// Signals the end of the statement.
     #[inline]
-    pub fn ratchet(&mut self) {
-        self.pattern.interact(Interaction::new::<()>(
-            Hierarchy::Atomic,
-            Kind::Protocol,
-            "ratchet",
-            Length::None,
-        )).expect("Failed to interact with pattern");
-        self.duplex_sponge.ratchet_unchecked();
+    pub fn ratchet(&mut self) -> &mut Self {
+        self.queued_ops.push(QueuedVerifierOp::Ratchet);
+        self
     }
 
     /// Abort the verifier session without completing playback.
     ///
     /// Any remaining expected interactions are discarded.
-    pub fn abort(mut self) {
-        self.pattern.abort().expect("Failed to abort pattern");
+    pub fn abort(mut self) -> Result<(), crate::pattern::PatternError> {
+        self.pattern.abort()?;
+        Ok(())
+    }
+
+    /// Execute all queued operations
+    pub(crate) fn execute_queued(&mut self) -> Result<(), crate::pattern::PatternError> {
+        for op in self.queued_ops.drain(..) {
+            match op {
+                QueuedVerifierOp::BeginProtocol => {
+                    // Consume Begin Protocol interactions
+                    while let Some(next) = self.pattern.peek_next() {
+                        if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Protocol {
+                            self.pattern.interact(next.clone())?;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                QueuedVerifierOp::EndProtocol => {
+                    // Consume End Protocol interactions
+                    while let Some(next) = self.pattern.peek_next() {
+                        if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Protocol {
+                            self.pattern.interact(next.clone())?;
+                        } else {
+                            break;
+                        }
+                    }
+                }
+                QueuedVerifierOp::PublicUnits(input) => {
+                    // Consume Begin Public interactions
+                    self.pattern.consume_begin(Kind::Public)?;
+
+                    // Process the atomic interaction
+                    self.pattern.interact(Interaction::new::<U>(
+                        Hierarchy::Atomic,
+                        Kind::Public,
+                        "public_units",
+                        Length::Fixed(input.len()),
+                    ))?;
+
+                    self.duplex_sponge.absorb_unchecked(&input);
+
+                    // Consume End Public interactions
+                    self.pattern.consume_end(Kind::Public)?;
+                }
+                QueuedVerifierOp::Ratchet => {
+                    self.pattern.interact(Interaction::new::<()>(
+                        Hierarchy::Atomic,
+                        Kind::Protocol,
+                        "ratchet",
+                        Length::None,
+                    ))?;
+                    self.duplex_sponge.ratchet_unchecked();
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Finalize the verifier session, asserting all interactions were consumed.
-    pub fn finalize(self) {
-        self.pattern.finalize().expect("Failed to finalize pattern");
+    pub fn finalize(mut self) -> Result<(), crate::pattern::PatternError> {
+        // Execute all queued operations
+        self.execute_queued()?;
+        
+        self.pattern.finalize()?;
+        Ok(())
     }
 }
 
 impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'_, H, U> {
     /// Add native elements to the sponge without writing them to the NARG string.
     #[inline]
-    fn public_units(&mut self, input: &[U]) {
-        // Consume Begin Public interactions
-        self.pattern.consume_begin(Kind::Public).expect("Failed to consume begin");
-
-        // Process the atomic interaction
-        self.pattern.interact(Interaction::new::<U>(
-            Hierarchy::Atomic,
-            Kind::Public,
-            "public_units",
-            Length::Fixed(input.len()),
-        )).expect("Failed to interact with pattern");
-
-        self.duplex_sponge.absorb_unchecked(input);
-
-        // Consume End Public interactions
-        self.pattern.consume_end(Kind::Public).expect("Failed to consume end");
+    fn public_units(&mut self, input: &[U]) -> &mut Self {
+        self.queued_ops.push(QueuedVerifierOp::PublicUnits(input.to_vec()));
+        self
     }
 
     /// Fill `input` with units sampled uniformly at random.
+    /// This method is immediate (not queued) because it needs to actually fill the buffer.
     #[inline]
-    fn fill_challenge_units(&mut self, input: &mut [U]) {
+    fn fill_challenge_units(&mut self, input: &mut [U]) -> Result<(), crate::pattern::PatternError> {
+        // Execute any queued operations first
+        self.execute_queued()?;
+        
         // Consume Begin Challenge interactions
-        self.pattern.consume_begin(Kind::Challenge).expect("Failed to consume begin");
+        self.pattern.consume_begin(Kind::Challenge)?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
@@ -175,12 +256,13 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'
             Kind::Challenge,
             "units",
             Length::Fixed(input.len()),
-        )).expect("Failed to interact with pattern");
+        ))?;
 
         self.duplex_sponge.squeeze_unchecked(input);
 
         // Consume End Challenge interactions
-        self.pattern.consume_end(Kind::Challenge).expect("Failed to consume end");
+        self.pattern.consume_end(Kind::Challenge)?;
+        Ok(())
     }
 }
 
@@ -193,7 +275,7 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> core::fmt::Debug for VerifierState<'_
 impl<H: DuplexSpongeInterface<u8>> BytesToUnitDeserialize for VerifierState<'_, H, u8> {
     /// Read the next `input.len()` bytes from the NARG string and return them.
     #[inline]
-    fn fill_next_bytes(&mut self, input: &mut [u8]) -> Result<(), std::io::Error> {
+    fn fill_next_bytes(&mut self, input: &mut [u8]) -> Result<(), crate::pattern::PatternError> {
         self.fill_next_units(input)
     }
 }

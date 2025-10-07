@@ -13,8 +13,8 @@ pub struct PatternState<U = u8>
 where
     U: Unit,
 {
-    /// Recorded interactions.
-    interactions: Vec<Interaction>,
+    /// Queued interactions to be validated on finalize.
+    queued_interactions: Vec<Interaction>,
     /// Stack of open hierarchical interactions
     hierarchy_stack: Vec<usize>, // Track hierarchy
     /// Whether the transcript playback has been finalized.
@@ -30,7 +30,7 @@ where
     #[must_use]
     pub const fn new() -> Self {
         Self {
-            interactions: Vec::new(),
+            queued_interactions: Vec::new(),
             hierarchy_stack: Vec::new(),
             finalized: false,
             _unit: PhantomData,
@@ -38,38 +38,40 @@ where
     }
 
     #[must_use]
-    pub fn finalize(self) -> InteractionPattern {
-        assert!(!self.finalized, "Transcript is already finalized.");
-        assert!(
-            self.hierarchy_stack.is_empty(),
-            "Unclosed hierarchical interactions remain"
-        );
-        match InteractionPattern::new(self.interactions) {
-            Ok(transcript) => transcript,
-            Err(e) => panic!("Error validating interaction pattern: {e}"),
+    pub fn finalize(self) -> Result<InteractionPattern, PatternError> {
+        if self.finalized {
+            return Err(PatternError::AlreadyFinalized);
+        }
+        if !self.hierarchy_stack.is_empty() {
+            return Err(PatternError::UnclosedHierarchy);
+        }
+        match InteractionPattern::new(self.queued_interactions) {
+            Ok(transcript) => Ok(transcript),
+            Err(e) => Err(PatternError::ValidationError(e.to_string())),
         }
     }
 
-    /// Add a new interaction to the pattern, returning an error on mismatch.
-    pub fn interact(&mut self, interaction: Interaction) -> Result<(), PatternError> {
+
+    /// Add a new interaction to the pattern, panicking on validation errors.
+    pub fn interact(&mut self, interaction: Interaction) -> &mut Self {
         if self.finalized {
-            return Err(PatternError::AlreadyFinalized);
+            panic!("Cannot add interactions to finalized pattern");
         }
 
         match interaction.hierarchy() {
             Hierarchy::Begin => {
                 if self.hierarchy_stack.len() >= Self::MAX_NESTING_DEPTH {
-                    return Err(PatternError::DepthExceeded { limit: Self::MAX_NESTING_DEPTH });
+                    panic!("Maximum nesting depth exceeded: {}", Self::MAX_NESTING_DEPTH);
                 }
-                self.hierarchy_stack.push(self.interactions.len());
+                self.hierarchy_stack.push(self.queued_interactions.len());
             }
             Hierarchy::End => {
                 let Some(begin_idx) = self.hierarchy_stack.pop() else {
-                    return Err(PatternError::MissingBegin { end: interaction.clone() });
+                    panic!("Missing Begin for {}", interaction);
                 };
-                let begin = &self.interactions[begin_idx];
+                let begin = &self.queued_interactions[begin_idx];
                 if !interaction.closes(begin) {
-                    return Err(PatternError::MismatchedBeginEnd { begin: begin.clone(), end: interaction.clone() });
+                    panic!("Mismatched begin and end: {}, {}", begin, interaction);
                 }
             }
             Hierarchy::Atomic => {
@@ -77,8 +79,8 @@ where
             }
         }
 
-        self.interactions.push(interaction);
-        Ok(())
+        self.queued_interactions.push(interaction);
+        self
     }
 
 
@@ -86,7 +88,7 @@ where
     fn last_open_begin(&self) -> Option<&Interaction> {
         self.hierarchy_stack
             .last()
-            .map(|&idx| &self.interactions[idx])
+            .map(|&idx| &self.queued_interactions[idx])
     }
 }
 
@@ -110,12 +112,33 @@ where
         self.hierarchy_stack.len()
     }
 
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError> {
-        self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length))
+    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+        let interaction = Interaction::new::<T>(Hierarchy::Begin, kind, label, length);
+        
+        // Validate the interaction
+        if self.hierarchy_stack.len() >= Self::MAX_NESTING_DEPTH {
+            return Err(PatternError::DepthExceeded { limit: Self::MAX_NESTING_DEPTH });
+        }
+        
+        self.hierarchy_stack.push(self.queued_interactions.len());
+        self.queued_interactions.push(interaction);
+        Ok(self)
     }
 
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError> {
-        self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length))
+    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+        let interaction = Interaction::new::<T>(Hierarchy::End, kind, label, length);
+        
+        // Validate the interaction
+        let Some(begin_idx) = self.hierarchy_stack.pop() else {
+            return Err(PatternError::MissingBegin { end: interaction });
+        };
+        let begin = &self.queued_interactions[begin_idx];
+        if !interaction.closes(begin) {
+            return Err(PatternError::MismatchedBeginEnd { begin: begin.clone(), end: interaction });
+        }
+        
+        self.queued_interactions.push(interaction);
+        Ok(self)
     }
 }
 
@@ -126,84 +149,84 @@ where
 {
     type Unit = U;
 
-    fn ratchet(&mut self) {
+    fn ratchet(&mut self) -> &mut Self {
         self.interact(Interaction::new::<()>(
             Hierarchy::Atomic,
             Kind::Protocol,
             "ratchet",
             Length::None,
-        )).expect("Failed to interact with pattern");
+        ))
     }
 
-    fn public_unit(&mut self, label: Label) {
+    fn public_unit(&mut self, label: Label) -> &mut Self {
         self.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
             label,
             Length::Scalar,
-        )).expect("Failed to interact with pattern");
+        ))
     }
 
-    fn public_units(&mut self, label: Label, size: usize) {
+    fn public_units(&mut self, label: Label, size: usize) -> &mut Self {
         self.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
             label,
             Length::Fixed(size),
-        )).expect("Failed to interact with pattern");
+        ))
     }
 
-    fn message_unit(&mut self, label: Label) {
+    fn message_unit(&mut self, label: Label) -> &mut Self {
         self.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
             label,
             Length::Scalar,
-        )).expect("Failed to interact with pattern");
+        ))
     }
 
-    fn message_units(&mut self, label: Label, size: usize) {
+    fn message_units(&mut self, label: Label, size: usize) -> &mut Self {
         self.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
             label,
             Length::Fixed(size),
-        )).expect("Failed to interact with pattern");
+        ))
     }
 
-    fn challenge_unit(&mut self, label: Label) {
+    fn challenge_unit(&mut self, label: Label) -> &mut Self {
         self.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Challenge,
             label,
             Length::Scalar,
-        )).expect("Failed to interact with pattern");
+        ))
     }
 
-    fn challenge_units(&mut self, label: Label, size: usize) {
+    fn challenge_units(&mut self, label: Label, size: usize) -> &mut Self {
         self.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Challenge,
             label,
             Length::Fixed(size),
-        )).expect("Failed to interact with pattern");
+        ))
     }
 
-    fn hint_bytes(&mut self, label: Label, size: usize) {
+    fn hint_bytes(&mut self, label: Label, size: usize) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Hint,
             label,
             Length::Fixed(size),
-        )).expect("Failed to interact with pattern");
+        ))
     }
 
-    fn hint_bytes_dynamic(&mut self, label: Label) {
+    fn hint_bytes_dynamic(&mut self, label: Label) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Hint,
             label,
             Length::Dynamic,
-        )).expect("Failed to interact with pattern");
+        ))
     }
 }
