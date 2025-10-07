@@ -6,55 +6,22 @@ use rand::{CryptoRng, RngCore};
 
 use super::{CommonGroupToUnit, FieldToUnitSerialize, GroupToUnitSerialize};
 use crate::{
-    pattern::{Hierarchy, Interaction, Kind, Length},
-    BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, DuplexSpongeInterface,
-    ProverState, Unit, UnitTranscript, VerifierState,
+    duplex_sponge::Unit, BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, 
+    DuplexSpongeInterface, ProverState, UnitTranscript, VerifierState,
 };
 
 impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSerialize<F>
     for ProverState<H, u8, R>
 {
     fn add_scalars(&mut self, input: &[F]) -> &mut Self {
-        // Execute any queued operations first
-        self.execute_queued().expect("Failed to execute queued operations");
-        
-        // Consume all Begin interactions for messages
-        while let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
-                let _ = self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
-
-        // Serialize and add
+        // Serialize the data
         let mut buf = Vec::new();
         for f in input {
             f.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
 
-        // The atomic interaction
-        let _ = self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            "units",
-            Length::Fixed(buf.len()),
-        ));
-
-        self.duplex_sponge.absorb_unchecked(&buf);
-        self.narg_string.extend(&buf);
-        self.rng.ds.absorb_unchecked(&buf);
-
-        // Consume all End interactions for messages
-        while let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Message {
-                let _ = self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
-        
+        self.add_units(&buf);
         self
     }
 }
@@ -67,15 +34,7 @@ impl<
     > FieldToUnitSerialize<Fp<C, N>> for ProverState<H, Fp<C, N>, R>
 {
     fn add_scalars(&mut self, input: &[Fp<C, N>]) -> &mut Self {
-        // Execute any queued operations first
-        self.execute_queued().expect("Failed to execute queued operations");
-        
-        let _ = self.public_units(input);
-        for i in input {
-            // Serialization should be infallible.
-            i.serialize_compressed(&mut self.narg_string)
-                .expect("Serialization failed");
-        }
+        self.public_units(input);
         self
     }
 }
@@ -87,18 +46,14 @@ where
     R: RngCore + CryptoRng,
 {
     fn add_points(&mut self, input: &[G]) -> &mut Self {
-        // Execute any queued operations first
-        self.execute_queued().expect("Failed to execute queued operations");
-        
-        // Serialize
+        // Serialize the data
         let mut serialized = Vec::new();
         for p in input {
             p.serialize_compressed(&mut serialized)
                 .expect("Serialization failed");
         }
 
-        // Use the existing add_units method which handles the pattern correctly
-        let _ = self.add_units(&serialized);
+        self.add_units(&serialized);
         self
     }
 }
@@ -112,14 +67,7 @@ where
     Self: CommonGroupToUnit<G> + FieldToUnitSerialize<G::BaseField>,
 {
     fn add_points(&mut self, input: &[G]) -> &mut Self {
-        // Execute any queued operations first
-        self.execute_queued().expect("Failed to execute queued operations");
-        
-        let _ = self.public_points(input);
-        for i in input {
-            i.serialize_compressed(&mut self.narg_string)
-                .expect("Serialization failed");
-        }
+        self.public_points(input);
         self
     }
 }
