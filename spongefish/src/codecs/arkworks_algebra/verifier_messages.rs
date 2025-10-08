@@ -1,101 +1,71 @@
-use std::io;
-
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{BigInteger, Field, Fp, FpConfig, PrimeField};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use rand::{CryptoRng, RngCore};
 
 use super::{CommonFieldToUnit, CommonGroupToUnit, UnitToField};
 use crate::{
-    codecs::bytes_uniform_modp, CommonUnitToBytes, DuplexSpongeInterface, ProofError, ProofResult,
-    ProverState, Unit, UnitToBytes, UnitTranscript, VerifierState,
+    codecs::bytes_uniform_modp,
+    pattern::{Label, PatternError},
+    CommonUnitToBytes, DuplexSpongeInterface, UnitToBytes, UnitTranscript, VerifierState,
 };
 
-// Implementation of basic traits for bridging arkworks and spongefish
+// Common implementations (no labels in public methods)
 
-impl<C: FpConfig<N>, const N: usize> Unit for Fp<C, N> {
-    fn write(bunch: &[Self], mut w: &mut impl io::Write) -> Result<(), io::Error> {
-        for b in bunch {
-            b.serialize_compressed(&mut w)
-                .map_err(|_| io::Error::other("Serialization failed"))?;
-        }
-        Ok(())
-    }
-
-    fn read(mut r: &mut impl io::Read, bunch: &mut [Self]) -> Result<(), io::Error> {
-        for b in bunch.iter_mut() {
-            *b = Self::deserialize_compressed(&mut r)
-                .map_err(|_| io::Error::other("Deserialization failed"))?;
-        }
-        Ok(())
-    }
-}
-
-impl From<SerializationError> for ProofError {
-    fn from(_value: SerializationError) -> Self {
-        Self::SerializationError
-    }
-}
-
-// Bytes <-> Field elements interactions:
-
-impl<T, G> CommonGroupToUnit<G> for T
+// Specific implementations for VerifierState with u8 unit type
+impl<G, H> CommonGroupToUnit<G> for VerifierState<'_, H, u8>
 where
     G: CurveGroup,
-    T: UnitTranscript<u8>,
+    H: DuplexSpongeInterface,
 {
     type Repr = Vec<u8>;
 
-    fn public_points(&mut self, input: &[G]) -> Self::Repr {
+    fn public_points(&mut self, label: Label, input: &[G]) -> Result<Self::Repr, PatternError> {
         let mut buf = Vec::new();
         for i in input {
-            // Serialization should be infallible
             i.serialize_compressed(&mut buf)
-                .expect("Serialization failed.");
+                .expect("Serialization failed");
         }
-
-        // Only absorb into sponge if we're not in a hierarchical context
-        // The hierarchical handlers will manage this
-        buf
+        self.public_bytes(label, &buf)?;
+        Ok(buf)
     }
 }
 
-impl<T, F> CommonFieldToUnit<F> for T
+impl<F, H> CommonFieldToUnit<F> for VerifierState<'_, H, u8>
 where
     F: Field,
-    T: UnitTranscript<u8>,
+    H: DuplexSpongeInterface,
 {
     type Repr = Vec<u8>;
 
-    fn public_scalars(&mut self, input: &[F]) -> Self::Repr {
+    fn public_scalars(&mut self, input: &[F]) -> Result<Self::Repr, PatternError> {
         let mut buf = Vec::new();
         for i in input {
-            // Writing to buffer should be infallible
             i.serialize_compressed(&mut buf)
-                .expect("Serialization failed.");
+                .expect("Serialization failed");
         }
-        self.public_bytes(&buf);
-        buf
+        self.public_bytes(Label::custom("public"), &buf)?;
+        Ok(buf)
     }
 }
 
-impl<F, T> UnitToField<F> for T
+// Specific implementation for VerifierState with u8 unit type
+impl<F, H> UnitToField<F> for VerifierState<'_, H, u8>
 where
     F: Field,
-    T: UnitTranscript<u8>,
+    H: DuplexSpongeInterface,
 {
-    fn fill_challenge_scalars(&mut self, output: &mut [F]) {
+    fn fill_challenge_scalars(&mut self, label: Label, output: &mut [F]) -> Result<&mut Self, PatternError> {
         let base_field_size = bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
         let mut buf = vec![0u8; F::extension_degree() as usize * base_field_size];
 
         for o in output.iter_mut() {
-            self.fill_challenge_bytes(&mut buf);
+            self.fill_challenge_bytes(label.clone(), &mut buf)?;
             *o = F::from_base_prime_field_elems(
                 buf.chunks(base_field_size)
                     .map(F::BasePrimeField::from_be_bytes_mod_order),
             )
             .expect("Could not convert");
         }
+        Ok(self)
     }
 }
 
@@ -104,61 +74,10 @@ where
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn fill_challenge_scalars(&mut self, output: &mut [Fp<C, N>]) {
-        self.fill_challenge_units(output);
+    fn fill_challenge_scalars(&mut self, label: Label, output: &mut [Fp<C, N>]) -> Result<&mut Self, PatternError> {
+        self.fill_challenge_units(label, output)
     }
 }
-
-impl<H, C, R, const N: usize> UnitToField<Fp<C, N>> for ProverState<H, Fp<C, N>, R>
-where
-    C: FpConfig<N>,
-    H: DuplexSpongeInterface<Fp<C, N>>,
-    R: CryptoRng + RngCore,
-{
-    fn fill_challenge_scalars(&mut self, output: &mut [Fp<C, N>]) {
-        self.fill_challenge_units(output);
-    }
-}
-
-// Field <-> Field interactions:
-
-impl<F, H, R, C, const N: usize> CommonFieldToUnit<F> for ProverState<H, Fp<C, N>, R>
-where
-    F: Field<BasePrimeField = Fp<C, N>>,
-    H: DuplexSpongeInterface<Fp<C, N>>,
-    R: RngCore + CryptoRng,
-    C: FpConfig<N>,
-{
-    type Repr = ();
-
-    fn public_scalars(&mut self, input: &[F]) -> Self::Repr {
-        let flattened: Vec<_> = input
-            .iter()
-            .flat_map(Field::to_base_prime_field_elements)
-            .collect();
-        self.public_units(&flattened);
-        ()
-    }
-}
-
-// In a glorious future, we will have this generic implementation working without this error:
-// error[E0119]: conflicting implementations of trait `ark::CommonGroupToUnit<_>`
-//    --> src/plugins/ark/common.rs:121:1
-//     |
-// 43  | / impl<T, G> CommonGroupToUnit<G> for T
-// 44  | | where
-// 45  | |     G: CurveGroup,
-// 46  | |     T: UnitTranscript<u8>,
-//     | |__________________________- first implementation here
-// ...
-// 121 | / impl< C, const N: usize, G, T> CommonGroupToUnit<G> for T
-// 122 | | where
-// 123 | |     T: UnitTranscript<Fp<C, N>>,
-// 124 | |     C: FpConfig<N>,
-// 125 | |     G: CurveGroup<BaseField = Fp<C, N>>,
-//     | |________________________________________^ conflicting implementation
-//
-//
 
 impl<F, H, C, const N: usize> CommonFieldToUnit<F> for VerifierState<'_, H, Fp<C, N>>
 where
@@ -168,31 +87,13 @@ where
 {
     type Repr = ();
 
-    fn public_scalars(&mut self, input: &[F]) -> Self::Repr {
+    fn public_scalars(&mut self, input: &[F]) -> Result<Self::Repr, PatternError> {
         let flattened: Vec<_> = input
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        self.public_units(&flattened);
-        ()
-    }
-}
-
-impl<H, R, C, const N: usize, G> CommonGroupToUnit<G> for ProverState<H, Fp<C, N>, R>
-where
-    C: FpConfig<N>,
-    R: RngCore + CryptoRng,
-    H: DuplexSpongeInterface<Fp<C, N>>,
-    G: CurveGroup<BaseField = Fp<C, N>>,
-{
-    type Repr = ();
-
-    fn public_points(&mut self, input: &[G]) -> Self::Repr {
-        for point in input {
-            let (x, y) = point.into_affine().xy().unwrap();
-            self.public_units(&[x, y]);
-        }
-        ()
+        self.public_units(Label::custom("public"), &flattened)?;
+        Ok(())
     }
 }
 
@@ -204,88 +105,74 @@ where
 {
     type Repr = ();
 
-    fn public_points(&mut self, input: &[G]) -> Self::Repr {
+    fn public_points(&mut self, label: Label, input: &[G]) -> Result<Self::Repr, PatternError> {
         for point in input {
             let (x, y) = point.into_affine().xy().unwrap();
-            self.public_units(&[x, y]);
+            self.public_units(label.clone(), &[x, y])?;
         }
-        ()
+        Ok(())
     }
 }
-
-// Field  <-> Bytes interactions:
 
 impl<H, C, const N: usize> CommonUnitToBytes for VerifierState<'_, H, Fp<C, N>>
 where
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn public_bytes(&mut self, input: &[u8]) {
+    fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
         for &byte in input {
-            self.public_units(&[Fp::from(byte)]);
+            self.public_units(label.clone(), &[Fp::from(byte)])?;
         }
+        Ok(self)
     }
 }
 
-impl<H, R, C, const N: usize> CommonUnitToBytes for ProverState<H, Fp<C, N>, R>
+impl<H, R, C, const N: usize> UnitToBytes for crate::ProverState<H, Fp<C, N>, R>
 where
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
-    R: CryptoRng + rand::RngCore,
+    R: rand::CryptoRng + rand::RngCore,
 {
-    fn public_bytes(&mut self, input: &[u8]) {
-        for &byte in input {
-            self.public_units(&[Fp::from(byte)]);
-        }
-    }
-}
-
-impl<H, R, C, const N: usize> UnitToBytes for ProverState<H, Fp<C, N>, R>
-where
-    C: FpConfig<N>,
-    H: DuplexSpongeInterface<Fp<C, N>>,
-    R: CryptoRng + RngCore,
-{
-    fn fill_challenge_bytes(&mut self, output: &mut [u8]) {
+    fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> Result<&mut Self, PatternError> {
         if !output.is_empty() {
             let len_good = usize::min(
                 crate::codecs::random_bytes_in_random_modp(Fp::<C, N>::MODULUS),
                 output.len(),
             );
             let mut tmp = [Fp::from(0); 1];
-            self.fill_challenge_units(&mut tmp);
+            self.fill_challenge_units(label.clone(), &mut tmp)?;
             let buf = tmp[0].into_bigint().to_bytes_le();
             output[..len_good].copy_from_slice(&buf[..len_good]);
 
             // recursively fill the rest of the buffer
-            self.fill_challenge_bytes(&mut output[len_good..]);
+            self.fill_challenge_bytes(label, &mut output[len_good..])?;
         }
+        Ok(self)
     }
 }
 
-/// XXX. duplicate code
 impl<H, C, const N: usize> UnitToBytes for VerifierState<'_, H, Fp<C, N>>
 where
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn fill_challenge_bytes(&mut self, output: &mut [u8]) {
+    fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> Result<&mut Self, PatternError> {
         if !output.is_empty() {
             let len_good = usize::min(
                 crate::codecs::random_bytes_in_random_modp(Fp::<C, N>::MODULUS),
                 output.len(),
             );
             let mut tmp = [Fp::from(0); 1];
-            self.fill_challenge_units(&mut tmp);
+            self.fill_challenge_units(label.clone(), &mut tmp)?;
             let buf = tmp[0].into_bigint().to_bytes_le();
             output[..len_good].copy_from_slice(&buf[..len_good]);
 
             // recursively fill the rest of the buffer
-            self.fill_challenge_bytes(&mut output[len_good..]);
+            self.fill_challenge_bytes(label, &mut output[len_good..])?;
         }
+        Ok(self)
     }
 }
-
 #[cfg(test)]
 #[cfg(feature = "disable")]
 mod tests {
