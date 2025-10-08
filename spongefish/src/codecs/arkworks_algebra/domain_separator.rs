@@ -2,36 +2,28 @@ use ark_ec::CurveGroup;
 use ark_ff::{Field, Fp, FpConfig, PrimeField};
 
 use super::{FieldPattern, GroupPattern};
+use crate::codecs::{bytes::Pattern as BytesPattern, unit::Pattern as UnitPattern};
 use crate::{
-    codecs::{
-        bytes::{self, Pattern as _},
-        unit::{self, Pattern as _},
-    },
-    pattern::{self, helpers::*, Label, Length, Pattern as _, PatternState},
+    codecs::{ bytes_modp, bytes_uniform_modp, unit, bytes},
+    pattern::{Kind, Label, Length, Pattern, PatternState},
 };
 
 impl<F> FieldPattern<F> for PatternState
 where
     F: Field,
 {
-    fn message_scalars(&mut self, label: Label, count: usize) {
-        field_pattern_message::<_, F>(
-            self,
-            label,
-            count,
-            F::BasePrimeField::MODULUS_BIT_SIZE,
-            F::extension_degree() as usize,
-        );
+    fn message_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
+        self.begin_message::<F>(label.clone(), Length::Fixed(count))?;
+        self.message_bytes(Label::Bytes, count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
+        self.end_message::<F>(label, Length::Fixed(count))?;
+        Ok(self)
     }
 
-    fn challenge_scalars(&mut self, label: Label, count: usize) {
-        field_pattern_challenge::<_, F>(
-            self,
-            label,
-            count,
-            F::BasePrimeField::MODULUS_BIT_SIZE,
-            F::extension_degree() as usize,
-        );
+    fn challenge_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
+        self.begin_challenge::<F>(label.clone(), Length::Fixed(count))?;
+        self.challenge_bytes(Label::Bytes, count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
+        self.end_challenge::<F>(label, Length::Fixed(count))?;
+        Ok(self)
     }
 }
 
@@ -39,9 +31,12 @@ impl<G> GroupPattern<G> for PatternState<u8>
 where
     G: CurveGroup,
 {
-    fn message_points(&mut self, label: Label, count: usize) {
+    fn message_points(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
         let compressed_size = G::default().compressed_size();
-        group_pattern_message::<_, G>(self, label, count, compressed_size);
+        self.begin_message::<G>(label.clone(), Length::Fixed(count))?;
+        self.message_bytes(Label::Bytes, count * compressed_size)?;
+        self.end_message::<G>(label, Length::Fixed(count))?;
+        Ok(self)
     }
 }
 
@@ -51,22 +46,24 @@ where
     F: Field<BasePrimeField = Fp<C, N>>,
     C: FpConfig<N>,
 {
-    fn message_scalars(&mut self, label: Label, count: usize) {
-        self.begin_message::<F>(label, Length::Fixed(count));
+    fn message_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
+        self.begin_message::<F>(label.clone(), Length::Fixed(count))?;
         self.message_units(
-            "base-field-coefficients",
+            Label::custom("base-field-coefficients"),
             count * F::extension_degree() as usize,
-        );
-        self.end_message::<F>(label, Length::Fixed(count));
+        )?;
+        self.end_message::<F>(label, Length::Fixed(count))?;
+        Ok(self)
     }
 
-    fn challenge_scalars(&mut self, label: Label, count: usize) {
-        self.begin_challenge::<F>(label, Length::Fixed(count));
+    fn challenge_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
+        self.begin_challenge::<F>(label.clone(), Length::Fixed(count))?;
         self.challenge_units(
-            "base-field-coefficients",
+            Label::custom("base-field-coefficients"),
             count * F::extension_degree() as usize,
-        );
-        self.end_challenge::<F>(label, Length::Fixed(count));
+        )?;
+        self.end_challenge::<F>(label, Length::Fixed(count))?;
+        Ok(self)
     }
 }
 
@@ -75,14 +72,16 @@ where
     G: CurveGroup<BaseField = Fp<C, N>>,
     C: FpConfig<N>,
 {
-    fn message_points(&mut self, label: Label, count: usize) {
-        self.begin_message::<G>(label, Length::Fixed(count));
-        self.message_units("coordinates", count * 2);
-        self.end_message::<G>(label, Length::Fixed(count));
+    fn message_points(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
+        self.begin_message::<G>(label.clone(), Length::Fixed(count))?;
+        self.message_units(Label::custom("coordinates"), count * 2)?;
+        self.end_message::<G>(label, Length::Fixed(count))?;
+        Ok(self)
     }
 }
 
 #[cfg(test)]
+#[cfg(feature = "arkworks-algebra")]
 mod tests {
     use ark_bls12_381::{Fq2, Fr};
     use ark_curve25519::EdwardsProjective as Curve;
@@ -154,14 +153,14 @@ mod tests {
         where
             P: pattern::Pattern + unit::Pattern + FieldPattern<G::BaseField> + GroupPattern<G>,
         {
-            pattern.begin_protocol::<()>("github.com/mmaker/spongefish");
-            pattern.message_points("g", 1);
-            pattern.message_points("pk", 1);
+            pattern.begin_protocol::<()>(Label::custom("github.com/mmaker/spongefish")).expect("Failed to begin protocol");
+            pattern.message_points(Label::custom("g"), 1);
+            pattern.message_points(Label::custom("pk"), 1);
             pattern.ratchet();
-            pattern.message_points("com", 1);
-            pattern.challenge_scalars("chal", 1);
-            pattern.message_scalars("resp", 1);
-            pattern.end_protocol::<()>("github.com/mmaker/spongefish");
+            pattern.message_points(Label::custom("com"), 1);
+            pattern.challenge_scalars(Label::custom("chal"), 1);
+            pattern.message_scalars(Label::custom("resp"), 1);
+            pattern.end_protocol::<()>(Label::custom("github.com/mmaker/spongefish")).expect("Failed to end protocol");
         }
         let mut pattern = PatternState::<u8>::new();
         add_schnorr_domain_separator::<_, ark_curve25519::EdwardsProjective>(&mut pattern);

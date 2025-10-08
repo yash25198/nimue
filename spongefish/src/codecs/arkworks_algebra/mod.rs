@@ -135,8 +135,37 @@ pub use crate::{
     VerifierState,
 };
 
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+
 super::traits::field_traits!(ark_ff::Field);
 super::traits::group_traits!(ark_ec::CurveGroup, Scalar: ark_ff::PrimeField);
+
+// Unit implementation for Fp field elements
+impl<C: ark_ff::FpConfig<N>, const N: usize> crate::Unit for ark_ff::Fp<C, N> {
+    fn write(bunch: &[Self], w: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+        for b in bunch {
+            b.serialize_compressed(&mut *w)
+                .map_err(|_| std::io::Error::other("Serialization failed"))?;
+        }
+        Ok(())
+    }
+
+    fn read(r: &mut impl std::io::Read, bunch: &mut [Self]) -> Result<(), std::io::Error> {
+        for b in bunch.iter_mut() {
+            *b = Self::deserialize_compressed(&mut *r)
+                .map_err(|_| std::io::Error::other("Deserialization failed"))?;
+        }
+        Ok(())
+    }
+}
+
+// Error conversions
+
+impl From<ark_serialize::SerializationError> for crate::ProofError {
+    fn from(_value: ark_serialize::SerializationError) -> Self {
+        Self::SerializationError
+    }
+}
 
 /// Move a value from prime field F1 to prime field F2.
 ///
