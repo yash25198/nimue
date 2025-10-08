@@ -2,7 +2,7 @@ use core::fmt::Display;
 
 use thiserror::Error;
 
-use super::{interaction::Hierarchy, Interaction, Kind};
+use super::{interaction::Hierarchy, Interaction, Kind, Label};
 
 /// Abstract transcript containing prover-verifier interactions
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default)]
@@ -162,14 +162,14 @@ mod tests {
     #[test]
     fn test_domain_separator() {
         let transcript = InteractionPattern::new(vec![
-            Interaction::new::<usize>(Hierarchy::Begin, Kind::Protocol, "test", Length::None),
+            Interaction::new::<usize>(Hierarchy::Begin, Kind::Protocol, Label::custom("test"), Length::None),
             Interaction::new::<Vec<f64>>(
                 Hierarchy::Atomic,
                 Kind::Message,
-                "test-message",
+                Label::custom("test-message"),
                 Length::Scalar,
             ),
-            Interaction::new::<usize>(Hierarchy::End, Kind::Protocol, "test", Length::None),
+            Interaction::new::<usize>(Hierarchy::End, Kind::Protocol, Label::custom("test"), Length::None),
         ])
         .unwrap();
 

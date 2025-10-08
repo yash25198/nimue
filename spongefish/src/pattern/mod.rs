@@ -1,6 +1,5 @@
 //! Abstract interaction patterns for interactive protocols.
 
-pub mod helpers;
 mod interaction;
 mod interaction_pattern;
 mod pattern_player;
@@ -17,126 +16,67 @@ pub use self::{
 
 /// Trait for objects that implement hierarchy operations.
 ///
-/// It does not offer any [`Kind::Atomic`] operations, these need to be implemented specifically.
+/// It does not offer any [`Kind::Atomic`] operations, these need to be implemented specifically./// Trait for objects that implement hierarchy operations.
 pub trait Pattern {
     /// End a transcript without finalizing it.
-    ///
-    /// # Panics
-    ///
-    /// Panics only if the interaction is already finalized or aborted.
     fn abort(&mut self) -> Result<(), PatternError>;
 
-    /// Track whether we're in a hierarchical context
-    fn in_hierarchy(&self) -> bool;
-
-    /// Get the current nesting depth
-    fn depth(&self) -> usize;
-
     /// Begin of a group of interactions.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError>;
+    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError>;
 
     /// End of a group of interactions.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<(), PatternError>;
+    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError>;
 
     /// Begin of a subprotocol.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_protocol<T: ?Sized>(&mut self, label: Label) -> Result<(), PatternError> {
+    fn begin_protocol<T: ?Sized>(&mut self, label: Label) -> Result<&mut Self, PatternError> {
         self.begin::<T>(label, Kind::Protocol, Length::None)
     }
 
     /// End of a subprotocol.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_protocol<T: ?Sized>(&mut self, label: Label) -> Result<(), PatternError> {
+    fn end_protocol<T: ?Sized>(&mut self, label: Label) -> Result<&mut Self, PatternError> {
         self.end::<T>(label, Kind::Protocol, Length::None)
     }
 
     /// Begin of a public message interaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_public<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
+    fn begin_public<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<&mut Self, PatternError> {
         self.begin::<T>(label, Kind::Public, length)
     }
 
     /// End of a public message interaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_public<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
+    fn end_public<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<&mut Self, PatternError> {
         self.end::<T>(label, Kind::Public, length)
     }
 
     /// Begin of a message interaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_message<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
+    fn begin_message<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<&mut Self, PatternError> {
         self.begin::<T>(label, Kind::Message, length)
     }
 
     /// End of a message interaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_message<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
+    fn end_message<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<&mut Self, PatternError> {
         self.end::<T>(label, Kind::Message, length)
     }
 
     /// Begin of a hint interaction.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
+    fn begin_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<&mut Self, PatternError> {
         self.begin::<T>(label, Kind::Hint, length)
     }
 
-    /// End of a hint interaction..
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
+    /// End of a hint interaction.
+    fn end_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<&mut Self, PatternError> {
         self.end::<T>(label, Kind::Hint, length)
     }
 
-    /// Begin of a challenge interaction..
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn begin_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
+    /// Begin of a challenge interaction.
+    fn begin_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<&mut Self, PatternError> {
         self.begin::<T>(label, Kind::Challenge, length)
     }
 
-    /// End of a challenge interaction..
-    ///
-    /// # Panics
-    ///
-    /// Panics if the interaction violates interaction pattern consistency rules.
-    fn end_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<(), PatternError> {
+    /// End of a challenge interaction.
+    fn end_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> Result<&mut Self, PatternError> {
         self.end::<T>(label, Kind::Challenge, length)
     }
 }
-
 /// Aliases offered for convenience.
 pub use Pattern as Common;
 /// Aliases offered for convenience.
@@ -152,26 +92,26 @@ mod tests {
     fn test_record_playback() {
         // Record a new pattern
         let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol::<()>("Example protocol").expect("Failed to begin protocol");
+        pattern.begin_protocol::<()>(Label::custom("Example protocol")).expect("Failed to begin protocol");
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        pattern.end_protocol::<()>("Example protocol").expect("Failed to end protocol");
+        pattern.end_protocol::<()>(Label::custom("Example protocol")).expect("Failed to end protocol");
         let pattern = pattern.finalize();
 
         // Play it back exactly
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.begin_protocol::<()>("Example protocol").expect("Failed to begin protocol");
+        playback.begin_protocol::<()>(Label::custom("Example protocol")).expect("Failed to begin protocol");
         playback.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        playback.end_protocol::<()>("Example protocol").expect("Failed to end protocol");
+        playback.end_protocol::<()>(Label::custom("Example protocol")).expect("Failed to end protocol");
         playback.finalize().expect("Failed to finalize");
     }
 
@@ -182,7 +122,7 @@ mod tests {
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
@@ -191,7 +131,7 @@ mod tests {
         playback.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
     }
@@ -202,14 +142,14 @@ mod tests {
     )]
     fn panics_if_record_begin_end_mismatch() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol::<()>("Example protocol").expect("Failed to begin protocol");
+        pattern.begin_protocol::<()>(Label::custom("Example protocol")).expect("Failed to begin protocol");
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        pattern.end_protocol::<()>("Invalid example protocol").expect("Failed to end protocol");
+        pattern.end_protocol::<()>(Label::custom("Invalid example protocol")).expect("Failed to end protocol");
         let _pattern = pattern.finalize();
     }
     #[test]
@@ -218,11 +158,11 @@ mod tests {
     )]
     fn panics_if_record_unmatched_begin() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol::<()>("Example protocol").expect("Failed to begin protocol");
+        pattern.begin_protocol::<()>(Label::custom("Example protocol")).expect("Failed to begin protocol");
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         let _pattern = pattern.finalize();
@@ -237,7 +177,7 @@ mod tests {
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
@@ -246,7 +186,7 @@ mod tests {
         playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         playback.finalize().expect("Failed to finalize");
@@ -261,7 +201,7 @@ mod tests {
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Message,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
@@ -270,7 +210,7 @@ mod tests {
         playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Public,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         playback.finalize().expect("Failed to finalize");
@@ -285,7 +225,7 @@ mod tests {
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
@@ -294,7 +234,7 @@ mod tests {
         playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "invalid",
+            Label::custom("invalid"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         playback.finalize().expect("Failed to finalize");
@@ -309,7 +249,7 @@ mod tests {
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         let pattern = pattern.finalize();
@@ -318,7 +258,7 @@ mod tests {
         playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            "nonce",
+            Label::custom("nonce"),
             Length::Fixed(1),
         )).expect("Failed to interact with pattern");
         playback.finalize().expect("Failed to finalize");

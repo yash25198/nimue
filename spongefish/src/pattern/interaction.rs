@@ -21,7 +21,74 @@ pub struct Interaction {
 }
 
 /// Labels for interactions.
-pub type Label = &'static str;
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum Label {
+    /// Predefined common labels
+    Bytes,
+    Points,
+    Scalars,
+    Challenge,
+    Nonce,
+    Public,
+    Message,
+    Hint,
+    /// Custom string label
+    Custom(String),
+}
+
+impl Label {
+    /// Create a new custom label from a string
+    pub fn custom(s: &str) -> Self {
+        Self::Custom(s.to_string())
+    }
+    
+    /// Get the string representation of the label
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Bytes => "bytes",
+            Self::Points => "points", 
+            Self::Scalars => "scalars",
+            Self::Challenge => "challenge",
+            Self::Nonce => "nonce",
+            Self::Public => "public",
+            Self::Message => "message",
+            Self::Hint => "hint",
+            Self::Custom(s) => s.as_str(),
+        }
+    }
+}
+
+impl From<&'static str> for Label {
+    fn from(s: &'static str) -> Self {
+        match s {
+            "bytes" => Self::Bytes,
+            "points" => Self::Points,
+            "scalars" => Self::Scalars,
+            "challenge" => Self::Challenge,
+            "nonce" => Self::Nonce,
+            "public" => Self::Public,
+            "message" => Self::Message,
+            "hint" => Self::Hint,
+            s => Self::Custom(s.to_string()),
+        }
+    }
+}
+
+impl From<String> for Label {
+    fn from(s: String) -> Self {
+        match s.as_str() {
+            "bytes" => Self::Bytes,
+            "points" => Self::Points,
+            "scalars" => Self::Scalars,
+            "challenge" => Self::Challenge,
+            "nonce" => Self::Nonce,
+            "public" => Self::Public,
+            "message" => Self::Message,
+            "hint" => Self::Hint,
+            _ => Self::Custom(s),
+        }
+    }
+}
 
 /// Kinds of prover-verifier interactions
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -85,6 +152,12 @@ impl Interaction {
         self.kind
     }
 
+    /// Returns the label of this interaction.
+    #[must_use]
+    pub const fn label(&self) -> &Label {
+        &self.label
+    }
+
     /// Returns `true` if this is a `Hierarchy::End` that closes the provided
     /// `Hierarchy::Begin`.
     #[must_use]
@@ -104,14 +177,15 @@ impl Display for Interaction {
             // Domain separator mode: stable unambiguous format.
             write!(f, "{} {}", self.hierarchy, self.kind)?;
             // Length prefixed strings for labels to disambiguate
-            write!(f, " {} {}", self.label.len(), self.label)?;
+            let label_str = self.label.as_str();
+            write!(f, " {} {}", label_str.len(), label_str)?;
             write!(f, " {}", self.length)
             // Leave out type names for domain separators.
         } else {
             write!(
                 f,
                 "{} {} {} {} {}",
-                self.hierarchy, self.kind, self.label, self.length, self.type_name,
+                self.hierarchy, self.kind, self.label.as_str(), self.length, self.type_name,
             )
         }
     }
@@ -165,7 +239,7 @@ mod tests {
         let interaction = Interaction::new::<Vec<f64>>(
             Hierarchy::Atomic,
             Kind::Message,
-            "test-message",
+            Label::custom("test-message"),
             Length::Scalar,
         );
         let result = format!("{interaction:#}");

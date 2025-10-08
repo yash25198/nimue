@@ -21,5 +21,3 @@ pub enum PatternError {
     #[error("Transcript not finished, expecting {expected}")]
     TranscriptNotFinished { expected: Interaction },
 }
-
-
