@@ -28,13 +28,13 @@ pub trait Pattern {
     fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError>;
 
     /// Begin of a subprotocol.
-    fn begin_protocol<T: ?Sized>(&mut self, label: Label) -> Result<&mut Self, PatternError> {
-        self.begin::<T>(label, Kind::Protocol, Length::None)
+    fn begin_protocol(&mut self, label: Label) -> Result<&mut Self, PatternError> {
+        self.begin::<()>(label, Kind::Protocol, Length::None)
     }
 
     /// End of a subprotocol.
-    fn end_protocol<T: ?Sized>(&mut self, label: Label) -> Result<&mut Self, PatternError> {
-        self.end::<T>(label, Kind::Protocol, Length::None)
+    fn end_protocol(&mut self, label: Label) -> Result<&mut Self, PatternError> {
+        self.end::<()>(label, Kind::Protocol, Length::None)
     }
 
     /// Begin of a public message interaction.

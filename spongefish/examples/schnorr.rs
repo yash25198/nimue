@@ -31,6 +31,7 @@ where
 {
     let mut pattern = PatternState::<u8>::new();
     // Statement: generator and public key (public inputs)
+    pattern.begin_protocol(Label::custom("schnorr")).expect("Failed to begin protocol");
     pattern.message_points(Label::custom("generator"), 1).expect("Failed to add generator pattern");
     pattern.message_points(Label::custom("public_key"), 1).expect("Failed to add public_key pattern");
 
@@ -39,7 +40,7 @@ where
     pattern.message_points(Label::custom("commitment"), 1).expect("Failed to add commitment pattern");
     pattern.message_scalars(Label::custom("challenge"), 1).expect("Failed to add challenge pattern");
     pattern.message_scalars(Label::custom("response"), 1).expect("Failed to add response pattern");
-
+    pattern.end_protocol(Label::custom("schnorr")).expect("Failed to end protocol");
     pattern
 }
 /// Key generation: returns (secret_key, public_key)
@@ -131,7 +132,7 @@ fn main() {
 
     // Create prover state
     let mut prover = ProverState::new(pattern.clone(), OsRng);
-    prover.begin_protocol(Label::custom("protocol"))
+    prover.begin_protocol(Label::custom("schnorr"))
         .expect("Failed to begin protocol")
         .add_points(Label::custom("generator"),&[P])
         .expect("Failed to add generator")
@@ -141,7 +142,7 @@ fn main() {
         .expect("Failed to ratchet");
     // Generate proof
     prove(&mut prover, P, x).expect("Proving failed");
-    prover.end_protocol(Label::custom("protocol")).expect("Failed to end protocol");
+    prover.end_protocol(Label::custom("schnorr")).expect("Failed to end protocol");
 
     let proof = prover.finalize().expect("Finalize failed");
 
@@ -151,7 +152,7 @@ fn main() {
 
     // Create verifier state
     let mut verifier = VerifierState::new(pattern.clone(), &proof);
-    verifier.begin_protocol(Label::custom("protocol"))
+    verifier.begin_protocol(Label::custom("schnorr"))
         .expect("Failed to begin protocol")
         .fill_next_points(Label::custom("generator"),&mut generator)
         .expect("Failed to read statement")
@@ -160,7 +161,7 @@ fn main() {
         .ratchet().expect("Ratchet failed");
     // Verify proof
     verify(&mut verifier, generator[0], public_key[0]).expect("Verification failed");
-    verifier.end_protocol(Label::custom("protocol")).expect("Failed to end protocol");
+    verifier.end_protocol(Label::custom("schnorr")).expect("Failed to end protocol");
     verifier.finalize().expect("Finalize failed");
 
     println!("✓ Proof verified successfully");

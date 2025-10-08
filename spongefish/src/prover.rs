@@ -182,13 +182,13 @@ where
 
     /// Begin a protocol
     pub fn begin_protocol(&mut self, label: Label) -> Result<&mut Self, PatternError> {
-        self.pattern.begin_protocol::<()>(label)?;
+        self.pattern.begin_protocol(label)?;
         Ok(self)
     }
 
     /// End a protocol
     pub fn end_protocol(&mut self, label: Label) -> Result<&mut Self, PatternError> {
-        self.pattern.end_protocol::<()>(label)?;
+        self.pattern.end_protocol(label)?;
         Ok(self)
     }
 
