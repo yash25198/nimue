@@ -1,55 +1,34 @@
-use ark_ec::CurveGroup;
+use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, Fp, FpConfig};
 use ark_serialize::CanonicalSerialize;
 use rand::{CryptoRng, RngCore};
 
 use super::{CommonFieldToUnit, CommonGroupToUnit, FieldToUnitSerialize, GroupToUnitSerialize};
 use crate::{
-    pattern::{Hierarchy, Interaction, Kind, Length, Pattern},
-    BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, DuplexSpongeInterface,
-    ProverState, Unit, UnitTranscript, VerifierState,
+    pattern::{Hierarchy, Interaction, Kind, Label, Length, Pattern as _, PatternError},
+    CommonUnitToBytes, DuplexSpongeInterface, ProverState, UnitTranscript,
 };
 
 impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSerialize<F>
     for ProverState<H, u8, R>
 {
-    fn add_scalars(&mut self, input: &[F]) {
-        // Consume all Begin interactions for messages
-        while let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
-
-        // Serialize and add
+    fn add_scalars(&mut self, label: Label, input: &[F]) -> Result<&mut Self, PatternError> {
+        // Begin the outer field message
+        self.pattern.begin_message::<F>(label.clone(), Length::Fixed(input.len()))?;
+        
+        // Serialize the scalars to bytes
         let mut buf = Vec::new();
         for f in input {
-            f.serialize_compressed(&mut buf)
-                .expect("Serialization failed");
+            f.serialize_compressed(&mut buf).expect("Serialization failed");
         }
 
-        // The atomic interaction
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            "units",
-            Length::Fixed(buf.len()),
-        ));
-
-        self.duplex_sponge.absorb_unchecked(&buf);
-        self.narg_string.extend(&buf);
-        self.rng.ds.absorb_unchecked(&buf);
-
-        // Consume all End interactions for messages
-        while let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // This will handle: Begin Message "bytes" -> Atomic "units" -> End Message "bytes"
+        self.add_units(Label::Bytes, &buf)?;
+        
+        // End the outer field message
+        self.pattern.end_message::<F>(label, Length::Fixed(input.len()))?;
+        
+        Ok(self)
     }
 }
 
@@ -60,13 +39,17 @@ impl<
         const N: usize,
     > FieldToUnitSerialize<Fp<C, N>> for ProverState<H, Fp<C, N>, R>
 {
-    fn add_scalars(&mut self, input: &[Fp<C, N>]) {
-        self.public_units(input);
-        for i in input {
-            // Serialization should be infallible.
-            i.serialize_compressed(&mut self.narg_string)
-                .expect("Serialization failed");
-        }
+    fn add_scalars(&mut self, label: Label, input: &[Fp<C, N>]) -> Result<&mut Self, PatternError> {
+        // Begin the outer field message
+        self.pattern.begin_message::<Fp<C, N>>(label.clone(), Length::Fixed(input.len()))?;
+        
+        // Use add_units which handles the inner hierarchy and serialization
+        self.add_units(Label::custom("base-field-coefficients"), input)?;
+        
+        // End the outer field message
+        self.pattern.end_message::<Fp<C, N>>(label, Length::Fixed(input.len()))?;
+        
+        Ok(self)
     }
 }
 
@@ -76,87 +59,151 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_points(&mut self, input: &[G]) {
-        // Consume all Begin interactions
-        while let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::Begin && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
-
+    fn add_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError> {
+        // Begin the outer group message
+        self.pattern.begin_message::<G>(label.clone(), Length::Fixed(input.len()))?;
+        
         // Serialize
         let mut serialized = Vec::new();
         for p in input {
-            p.serialize_compressed(&mut serialized)
-                .expect("Serialization failed");
+            p.serialize_compressed(&mut serialized).expect("Serialization failed");
         }
 
-        // The atomic interaction
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            "units",
-            Length::Fixed(serialized.len()),
-        ));
+        // This will handle: Begin Message "bytes" -> Atomic "units" -> End Message "bytes"
+        self.add_units(Label::Bytes, &serialized)?;
 
-        self.duplex_sponge.absorb_unchecked(&serialized);
-        self.narg_string.extend(&serialized);
-        self.rng.ds.absorb_unchecked(&serialized);
-
-        // Consume all End interactions
-        while let Some(next) = self.pattern.peek_next() {
-            if next.hierarchy() == Hierarchy::End && next.kind() == Kind::Message {
-                self.pattern.interact(next.clone());
-            } else {
-                break;
-            }
-        }
+        // End the outer group message
+        self.pattern.end_message::<G>(label, Length::Fixed(input.len()))?;
+        
+        Ok(self)
     }
 }
 
-impl<G, H, R, C: FpConfig<N>, C2: FpConfig<N>, const N: usize> GroupToUnitSerialize<G>
+impl<G, H, R, C: FpConfig<N>, const N: usize> GroupToUnitSerialize<G>
     for ProverState<H, Fp<C, N>, R>
 where
-    G: CurveGroup<BaseField = Fp<C2, N>>,
+    G: CurveGroup<BaseField = Fp<C, N>>,
     H: DuplexSpongeInterface<Fp<C, N>>,
     R: RngCore + CryptoRng,
-    Self: CommonGroupToUnit<G> + FieldToUnitSerialize<G::BaseField>,
+    Self: CommonGroupToUnit<G>,
 {
-    fn add_points(&mut self, input: &[G]) {
-        self.public_points(input);
+    fn add_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError> {
+        // Begin the outer group message
+        self.pattern.begin_message::<G>(label.clone(), Length::Fixed(input.len()))?;
+        
+        // Extract coordinates into flat array
+        let mut coords = Vec::with_capacity(input.len() * 2);
+        for point in input {
+            let (x, y) = point.into_affine().xy().unwrap();
+            coords.push(x);
+            coords.push(y);
+        }
+        
+        // Use add_units which handles inner hierarchy and serialization
+        self.add_units(Label::custom("coordinates"), &coords)?;
+        
+        // End the outer group message
+        self.pattern.end_message::<G>(label, Length::Fixed(input.len()))?;
+        
+        Ok(self)
+    }
+}
+
+
+// Specific implementations for ProverState with u8 unit type
+impl<G, H, R> CommonGroupToUnit<G> for ProverState<H, u8, R>
+where
+    G: CurveGroup,
+    H: DuplexSpongeInterface,
+    R: RngCore + CryptoRng,
+{
+    type Repr = Vec<u8>;
+
+    fn public_points(&mut self, label: Label, input: &[G]) -> Result<Self::Repr, PatternError> {
+        let mut buf = Vec::new();
         for i in input {
-            i.serialize_compressed(&mut self.narg_string)
+            i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
+        self.public_bytes(label, &buf)?;
+        Ok(buf)
     }
 }
 
-impl<H, R, C, const N: usize> BytesToUnitSerialize for ProverState<H, Fp<C, N>, R>
+impl<F, H, R> CommonFieldToUnit<F> for ProverState<H, u8, R>
 where
-    H: DuplexSpongeInterface<Fp<C, N>>,
-    C: FpConfig<N>,
+    F: Field,
+    H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_bytes(&mut self, input: &[u8]) {
-        self.public_bytes(input);
-        self.narg_string.extend(input);
+    type Repr = Vec<u8>;
+
+    fn public_scalars(&mut self, input: &[F]) -> Result<Self::Repr, PatternError> {
+        let mut buf = Vec::new();
+        for i in input {
+            i.serialize_compressed(&mut buf)
+                .expect("Serialization failed");
+        }
+        self.public_bytes(Label::custom("public"), &buf)?;
+        Ok(buf)
     }
 }
 
-impl<H, C, const N: usize> BytesToUnitDeserialize for VerifierState<'_, H, Fp<C, N>>
+impl<F, H, R, C, const N: usize> CommonFieldToUnit<F> for ProverState<H, Fp<C, N>, R>
 where
+    F: Field<BasePrimeField = Fp<C, N>>,
     H: DuplexSpongeInterface<Fp<C, N>>,
+    R: RngCore + CryptoRng,
     C: FpConfig<N>,
 {
-    fn fill_next_bytes(&mut self, input: &mut [u8]) -> Result<(), std::io::Error> {
-        u8::read(&mut self.narg_string, input)?;
-        self.public_bytes(input);
+    type Repr = ();
+
+    fn public_scalars(&mut self, input: &[F]) -> Result<Self::Repr, PatternError> {
+        let flattened: Vec<_> = input
+            .iter()
+            .flat_map(Field::to_base_prime_field_elements)
+            .collect();
+        self.public_units(Label::custom("public"), &flattened)?;
         Ok(())
     }
 }
 
+impl<H, R, C, const N: usize, G> CommonGroupToUnit<G> for ProverState<H, Fp<C, N>, R>
+where
+    C: FpConfig<N>,
+    R: RngCore + CryptoRng,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+    G: CurveGroup<BaseField = Fp<C, N>>,
+{
+    type Repr = ();
+    
+    fn public_points(&mut self, label: Label, input: &[G]) -> Result<Self::Repr, PatternError> {
+        // Flatten all coordinates into one array
+        let mut coords = Vec::with_capacity(input.len() * 2);
+        for point in input {
+            let (x, y) = point.into_affine().xy().unwrap();
+            coords.push(x);
+            coords.push(y);
+        }
+        // Single call to public_units for all coordinates
+        self.public_units(label, &coords)?;
+        Ok(())
+    }
+}
+
+impl<H, R, C, const N: usize> CommonUnitToBytes for ProverState<H, Fp<C, N>, R>
+where
+    C: FpConfig<N>,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+    R: CryptoRng + rand::RngCore,
+{
+    fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
+        for &byte in input {
+            self.public_units(label.clone(), &[Fp::from(byte)])?;
+        }
+        Ok(self)
+    }
+}
 #[cfg(test)]
 #[cfg(feature = "disable")]
 mod tests {
