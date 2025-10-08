@@ -122,45 +122,45 @@ fn main() {
     // Create interaction pattern
     let pattern = Arc::new(schnorr_pattern::<G>());
 
+    // Finalize the pattern
+    let pattern = Arc::new(<PatternState as Clone>::clone(&pattern).finalize());
+
     // Setup: generate keys
     let P = G::generator();
     let (x, X) = keygen::<G>();
 
-    // Finalize the pattern
-    let pattern = Arc::new(<PatternState as Clone>::clone(&pattern).finalize());
-
-    // Prover: create proof
+    // Create prover state
     let mut prover = ProverState::new(pattern.clone(), OsRng);
-
-    prover.begin_protocol(Label::custom("protocol")).unwrap();
-    // Add statement (public inputs)
-    prover.add_points(Label::custom("generator"),&[P]).unwrap();
-    prover.add_points(Label::custom("public_key"),&[X]).unwrap();
-    prover.ratchet().unwrap();
+    prover.begin_protocol(Label::custom("protocol"))
+        .expect("Failed to begin protocol")
+        .add_points(Label::custom("generator"),&[P])
+        .expect("Failed to add generator")
+        .add_points(Label::custom("public_key"),&[X])
+        .expect("Failed to add public key")
+        .ratchet()
+        .expect("Failed to ratchet");
     // Generate proof
     prove(&mut prover, P, x).expect("Proving failed");
-    prover.end_protocol(Label::custom("protocol")).unwrap();
+    prover.end_protocol(Label::custom("protocol")).expect("Failed to end protocol");
 
     let proof = prover.finalize().expect("Finalize failed");
 
-    // Verifier: verify proof
-    let mut verifier = VerifierState::new(pattern.clone(), &proof);
-
-    verifier.begin_protocol(Label::custom("protocol")).unwrap();
-    // Read statement
+    // Read statements
     let mut generator = [G::default(); 1];
     let mut public_key = [G::default(); 1];
-    verifier
+
+    // Create verifier state
+    let mut verifier = VerifierState::new(pattern.clone(), &proof);
+    verifier.begin_protocol(Label::custom("protocol"))
+        .expect("Failed to begin protocol")
         .fill_next_points(Label::custom("generator"),&mut generator)
-        .expect("Failed to read statement");
-    verifier
+        .expect("Failed to read statement")
         .fill_next_points(Label::custom("public_key"),&mut public_key)
-        .expect("Failed to read statement");
-    verifier.ratchet().expect("Ratchet failed");
+        .expect("Failed to read statement")
+        .ratchet().expect("Ratchet failed");
     // Verify proof
     verify(&mut verifier, generator[0], public_key[0]).expect("Verification failed");
-    verifier.end_protocol(Label::custom("protocol")).unwrap();
-
+    verifier.end_protocol(Label::custom("protocol")).expect("Failed to end protocol");
     verifier.finalize().expect("Finalize failed");
 
     println!("✓ Proof verified successfully");
