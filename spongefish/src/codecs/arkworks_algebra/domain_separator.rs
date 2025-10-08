@@ -13,15 +13,15 @@ where
     F: Field,
 {
     fn message_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
-        self.begin_message::<F>(label.clone(), Length::Fixed(count))?;
-        self.message_bytes(Label::Bytes, count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
+        self.begin_message::<F>(label, Length::Fixed(count))?;
+        self.message_bytes(Label::BYTES, count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
         self.end_message::<F>(label, Length::Fixed(count))?;
         Ok(self)
     }
 
     fn challenge_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
-        self.begin_challenge::<F>(label.clone(), Length::Fixed(count))?;
-        self.challenge_bytes(Label::Bytes, count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
+        self.begin_challenge::<F>(label, Length::Fixed(count))?;
+        self.challenge_bytes(Label::BYTES, count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
         self.end_challenge::<F>(label, Length::Fixed(count))?;
         Ok(self)
     }
@@ -33,8 +33,8 @@ where
 {
     fn message_points(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
         let compressed_size = G::default().compressed_size();
-        self.begin_message::<G>(label.clone(), Length::Fixed(count))?;
-        self.message_bytes(Label::Bytes, count * compressed_size)?;
+        self.begin_message::<G>(label, Length::Fixed(count))?;
+        self.message_bytes(Label::BYTES, count * compressed_size)?;
         self.end_message::<G>(label, Length::Fixed(count))?;
         Ok(self)
     }
@@ -47,9 +47,9 @@ where
     C: FpConfig<N>,
 {
     fn message_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
-        self.begin_message::<F>(label.clone(), Length::Fixed(count))?;
+        self.begin_message::<F>(label, Length::Fixed(count))?;
         self.message_units(
-            Label::custom("base-field-coefficients"),
+            Label::BASE_FIELD_COEFFICIENTS,
             count * F::extension_degree() as usize,
         )?;
         self.end_message::<F>(label, Length::Fixed(count))?;
@@ -57,9 +57,9 @@ where
     }
 
     fn challenge_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
-        self.begin_challenge::<F>(label.clone(), Length::Fixed(count))?;
+        self.begin_challenge::<F>(label, Length::Fixed(count))?;
         self.challenge_units(
-            Label::custom("base-field-coefficients"),
+            Label::BASE_FIELD_COEFFICIENTS,
             count * F::extension_degree() as usize,
         )?;
         self.end_challenge::<F>(label, Length::Fixed(count))?;
@@ -73,15 +73,14 @@ where
     C: FpConfig<N>,
 {
     fn message_points(&mut self, label: Label, count: usize) -> Result<&mut Self, crate::pattern::PatternError> {
-        self.begin_message::<G>(label.clone(), Length::Fixed(count))?;
-        self.message_units(Label::custom("coordinates"), count * 2)?;
+        self.begin_message::<G>(label, Length::Fixed(count))?;
+        self.message_units(Label::COORDINATES, count * 2)?;
         self.end_message::<G>(label, Length::Fixed(count))?;
         Ok(self)
     }
 }
 
 #[cfg(test)]
-#[cfg(feature = "arkworks-algebra")]
 mod tests {
     use ark_bls12_381::{Fq2, Fr};
     use ark_curve25519::EdwardsProjective as Curve;

@@ -53,14 +53,14 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     #[inline]
     pub fn fill_next_units(&mut self, label: Label, input: &mut [U]) -> Result<&mut Self, std::io::Error> {
         // Use proper begin_message to match the pattern
-        self.pattern.begin_message::<U>(label.clone(), Length::Fixed(input.len()))
+        self.pattern.begin_message::<U>(label, Length::Fixed(input.len()))
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to begin message"))?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::custom("units"),
+            Label::UNITS,
             Length::Fixed(input.len()),
         )).map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to interact"))?;
 
@@ -128,7 +128,7 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         self.pattern.interact(Interaction::new::<()>(
             Hierarchy::Atomic,
             Kind::Protocol,
-            Label::custom("ratchet"),
+            Label::RATCHET,
             Length::None,
         ))?;
         self.duplex_sponge.ratchet_unchecked();
@@ -186,13 +186,13 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'
     /// Add native elements to the sponge without writing them to the NARG string.
     fn public_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
         // Use proper begin_public to match the pattern
-        self.pattern.begin_public::<U>(label.clone(), Length::Fixed(input.len()))?;
+        self.pattern.begin_public::<U>(label, Length::Fixed(input.len()))?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
-            Label::custom("units"),
+            Label::UNITS,
             Length::Fixed(input.len()),
         ))?;
 
@@ -207,13 +207,13 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'
     #[inline]
     fn fill_challenge_units(&mut self, label: Label, input: &mut [U]) -> Result<&mut Self, PatternError> {
         // Use proper begin_challenge to match the pattern
-        self.pattern.begin_challenge::<U>(label.clone(), Length::Fixed(input.len()))?;
+        self.pattern.begin_challenge::<U>(label, Length::Fixed(input.len()))?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("units"),
+            Label::UNITS,
             Length::Fixed(input.len()),
         ))?;
 
@@ -243,16 +243,16 @@ where
         A: ark_serialize::CanonicalDeserialize + ark_ec::AffineRepr<BaseField = Fp<C, N>>,
     {
         // Begin the outer group message
-        self.pattern.begin_message::<G>(label.clone(), Length::Fixed(output.len()))?;
+        self.pattern.begin_message::<G>(label, Length::Fixed(output.len()))?;
         
         // Begin the inner coordinates layer
-        self.pattern.begin_message::<Fp<C, N>>(Label::custom("coordinates"), Length::Fixed(output.len() * 2))?;
+        self.pattern.begin_message::<Fp<C, N>>(Label::COORDINATES, Length::Fixed(output.len() * 2))?;
         
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<Fp<C, N>>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::custom("units"),
+            Label::UNITS,
             Length::Fixed(output.len() * 2),
         ))?;
 
@@ -266,7 +266,7 @@ where
         }
         
         // End the inner coordinates layer
-        self.pattern.end_message::<Fp<C, N>>(Label::custom("coordinates"), Length::Fixed(output.len() * 2))?;
+        self.pattern.end_message::<Fp<C, N>>(Label::COORDINATES, Length::Fixed(output.len() * 2))?;
         
         // End the outer group message
         self.pattern.end_message::<G>(label, Length::Fixed(output.len()))?;
@@ -371,7 +371,7 @@ mod tests {
     #[test]
     fn test_fill_next_units_reads_and_absorbs() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::custom("units"), 3);
+        pattern.message_units(Label::UNITS, 3);
         let pattern = pattern.finalize();
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"abc");
@@ -385,7 +385,7 @@ mod tests {
     #[test]
     fn test_fill_next_units_with_insufficient_data_errors() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::custom("units"), 4);
+        pattern.message_units(Label::UNITS, 4);
         let pattern = pattern.finalize();
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"xy");
@@ -412,7 +412,7 @@ mod tests {
     )]
     fn test_ratcheting_wrong_op_errors() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::custom("units"), 1);
+        pattern.message_units(Label::UNITS, 1);
         let pattern = pattern.finalize();
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), &[]);
@@ -447,7 +447,7 @@ mod tests {
     #[test]
     fn test_fill_next_bytes_impl() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_bytes(Label::Bytes, 3).expect("Failed to add message bytes");
+        pattern.message_bytes(Label::BYTES, 3).expect("Failed to add message bytes");
         let pattern = pattern.finalize();
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"xyz");

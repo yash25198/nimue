@@ -122,13 +122,13 @@ where
      /// Add units with a label to the transcript
      pub fn add_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
         // Use proper begin_message to match the pattern
-        self.pattern.begin_message::<U>(label.clone(), Length::Fixed(input.len()))?;
+        self.pattern.begin_message::<U>(label, Length::Fixed(input.len()))?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::custom("units"),
+            Label::UNITS,
             Length::Fixed(input.len()),
         ))?;
 
@@ -196,7 +196,7 @@ where
         self.pattern.interact(Interaction::new::<()>(
             Hierarchy::Atomic,
             Kind::Protocol,
-            Label::custom("ratchet"),
+            Label::RATCHET,
             Length::None,
         ))?;
         self.duplex_sponge.ratchet_unchecked();
@@ -247,13 +247,13 @@ where
 {
     fn public_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
         // Use proper begin_public to match the pattern
-        self.pattern.begin_public::<U>(label.clone(), Length::Fixed(input.len()))?;
+        self.pattern.begin_public::<U>(label, Length::Fixed(input.len()))?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
-            Label::custom("units"),
+            Label::UNITS,
             Length::Fixed(input.len()),
         ))?;
 
@@ -271,13 +271,13 @@ where
 
     fn fill_challenge_units(&mut self, label: Label, output: &mut [U]) -> Result<&mut Self, PatternError> {
         // Use proper begin_challenge to match the pattern
-        self.pattern.begin_challenge::<U>(label.clone(), Length::Fixed(output.len()))?;
+        self.pattern.begin_challenge::<U>(label, Length::Fixed(output.len()))?;
 
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("units"),
+            Label::UNITS,
             Length::Fixed(output.len()),
         ))?;
 
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn test_prover_state_add_units_and_rng_differs() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_bytes(Label::Bytes, 4).expect("Failed to add message bytes");
+        pattern.message_bytes(Label::BYTES, 4).expect("Failed to add message bytes");
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
@@ -389,7 +389,7 @@ mod tests {
     #[test]
     fn test_add_units_appends_to_narg_string() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::custom("units"), 3);
+        pattern.message_units(Label::UNITS, 3);
         let pattern = pattern.finalize();
         let mut pstate: ProverState = ProverState::from(&pattern);
 
@@ -406,7 +406,7 @@ mod tests {
     )]
     fn test_add_units_too_many_elements_should_panic() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::custom("units"), 2);
+        pattern.message_units(Label::UNITS, 2);
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
@@ -430,7 +430,7 @@ mod tests {
     )]
     fn test_ratchet_fails_when_not_expected() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::custom("units"), 4);
+        pattern.message_units(Label::UNITS, 4);
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
@@ -454,7 +454,7 @@ mod tests {
     #[test]
     fn test_rng_entropy_changes_with_transcript() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_bytes(Label::Bytes, 3).expect("Failed to add message bytes");
+        pattern.message_bytes(Label::BYTES, 3).expect("Failed to add message bytes");
         let pattern = pattern.finalize();
 
         let mut p1: ProverState = ProverState::from(&pattern);
@@ -475,8 +475,8 @@ mod tests {
     #[test]
     fn test_add_units_multiple_accumulates() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::custom("units"), 2);
-        pattern.message_units(Label::custom("units"), 3);
+        pattern.message_units(Label::UNITS, 2);
+        pattern.message_units(Label::UNITS, 3);
         let pattern = pattern.finalize();
 
         let mut p: ProverState = ProverState::from(&pattern);
@@ -488,7 +488,7 @@ mod tests {
     #[test]
     fn test_narg_string_round_trip_check() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::custom("units"), 5);
+        pattern.message_units(Label::UNITS, 5);
         let pattern = pattern.finalize();
 
         let mut p: ProverState = ProverState::from(&pattern);

@@ -18,18 +18,18 @@ where
 {
     fn fill_next_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
         // Begin the outer field message
-        self.pattern.begin_message::<F>(label.clone(), Length::Fixed(output.len()))?;
+        self.pattern.begin_message::<F>(label, Length::Fixed(output.len()))?;
         
         // Begin the inner bytes layer
         let scalar_bytes = bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
         let total_bytes = output.len() * scalar_bytes;
-        self.pattern.begin_message::<u8>(Label::Bytes, Length::Fixed(total_bytes))?;
+        self.pattern.begin_message::<u8>(Label::BYTES, Length::Fixed(total_bytes))?;
         
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::custom("units"),
+            Label::UNITS,
             Length::Fixed(total_bytes),
         ))?;
 
@@ -42,7 +42,7 @@ where
         }
         
         // End the inner bytes layer
-        self.pattern.end_message::<u8>(Label::Bytes, Length::Fixed(total_bytes))?;
+        self.pattern.end_message::<u8>(Label::BYTES, Length::Fixed(total_bytes))?;
         
         // End the outer field message
         self.pattern.end_message::<F>(label, Length::Fixed(output.len()))?;
@@ -58,18 +58,18 @@ where
 {
     fn fill_next_points(&mut self, label: Label, output: &mut [G]) -> ProofResult<&mut Self> {
         // Begin the outer group message
-        self.pattern.begin_message::<G>(label.clone(), Length::Fixed(output.len()))?;
+        self.pattern.begin_message::<G>(label, Length::Fixed(output.len()))?;
         
         // Begin the inner bytes layer
         let point_size = G::default().compressed_size();
         let total_bytes = output.len() * point_size;
-        self.pattern.begin_message::<u8>(Label::Bytes, Length::Fixed(total_bytes))?;
+        self.pattern.begin_message::<u8>(Label::BYTES, Length::Fixed(total_bytes))?;
         
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::custom("units"),
+            Label::UNITS,
             Length::Fixed(total_bytes),
         ))?;
 
@@ -81,7 +81,7 @@ where
         }
         
         // End the inner bytes layer
-        self.pattern.end_message::<u8>(Label::Bytes, Length::Fixed(total_bytes))?;
+        self.pattern.end_message::<u8>(Label::BYTES, Length::Fixed(total_bytes))?;
         
         // End the outer group message
         self.pattern.end_message::<G>(label, Length::Fixed(output.len()))?;
@@ -97,10 +97,10 @@ where
 {
     fn fill_next_scalars(&mut self, label: Label, output: &mut [Fp<C, N>]) -> ProofResult<&mut Self> {
         // Begin the outer field message
-        self.pattern.begin_message::<Fp<C, N>>(label.clone(), Length::Fixed(output.len()))?;
+        self.pattern.begin_message::<Fp<C, N>>(label, Length::Fixed(output.len()))?;
         
         // Use fill_next_units which now handles the inner hierarchy correctly
-        self.fill_next_units(Label::custom("base-field-coefficients"), output)?;
+        self.fill_next_units(Label::BASE_FIELD_COEFFICIENTS, output)?;
         
         // End the outer field message
         self.pattern.end_message::<Fp<C, N>>(label, Length::Fixed(output.len()))?;

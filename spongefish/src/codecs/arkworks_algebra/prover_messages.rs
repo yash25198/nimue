@@ -14,7 +14,7 @@ impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSeri
 {
     fn add_scalars(&mut self, label: Label, input: &[F]) -> Result<&mut Self, PatternError> {
         // Begin the outer field message
-        self.pattern.begin_message::<F>(label.clone(), Length::Fixed(input.len()))?;
+        self.pattern.begin_message::<F>(label, Length::Fixed(input.len()))?;
         
         // Serialize the scalars to bytes
         let mut buf = Vec::new();
@@ -23,7 +23,7 @@ impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSeri
         }
 
         // This will handle: Begin Message "bytes" -> Atomic "units" -> End Message "bytes"
-        self.add_units(Label::Bytes, &buf)?;
+        self.add_units(Label::BYTES, &buf)?;
         
         // End the outer field message
         self.pattern.end_message::<F>(label, Length::Fixed(input.len()))?;
@@ -41,10 +41,10 @@ impl<
 {
     fn add_scalars(&mut self, label: Label, input: &[Fp<C, N>]) -> Result<&mut Self, PatternError> {
         // Begin the outer field message
-        self.pattern.begin_message::<Fp<C, N>>(label.clone(), Length::Fixed(input.len()))?;
+        self.pattern.begin_message::<Fp<C, N>>(label, Length::Fixed(input.len()))?;
         
         // Use add_units which handles the inner hierarchy and serialization
-        self.add_units(Label::custom("base-field-coefficients"), input)?;
+        self.add_units(Label::BASE_FIELD_COEFFICIENTS, input)?;
         
         // End the outer field message
         self.pattern.end_message::<Fp<C, N>>(label, Length::Fixed(input.len()))?;
@@ -61,7 +61,7 @@ where
 {
     fn add_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError> {
         // Begin the outer group message
-        self.pattern.begin_message::<G>(label.clone(), Length::Fixed(input.len()))?;
+        self.pattern.begin_message::<G>(label, Length::Fixed(input.len()))?;
         
         // Serialize
         let mut serialized = Vec::new();
@@ -70,7 +70,7 @@ where
         }
 
         // This will handle: Begin Message "bytes" -> Atomic "units" -> End Message "bytes"
-        self.add_units(Label::Bytes, &serialized)?;
+        self.add_units(Label::BYTES, &serialized)?;
 
         // End the outer group message
         self.pattern.end_message::<G>(label, Length::Fixed(input.len()))?;
@@ -89,7 +89,7 @@ where
 {
     fn add_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError> {
         // Begin the outer group message
-        self.pattern.begin_message::<G>(label.clone(), Length::Fixed(input.len()))?;
+        self.pattern.begin_message::<G>(label, Length::Fixed(input.len()))?;
         
         // Extract coordinates into flat array
         let mut coords = Vec::with_capacity(input.len() * 2);
@@ -100,7 +100,7 @@ where
         }
         
         // Use add_units which handles inner hierarchy and serialization
-        self.add_units(Label::custom("coordinates"), &coords)?;
+        self.add_units(Label::COORDINATES, &coords)?;
         
         // End the outer group message
         self.pattern.end_message::<G>(label, Length::Fixed(input.len()))?;
@@ -144,7 +144,7 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.public_bytes(Label::custom("public"), &buf)?;
+        self.public_bytes(Label::PUBLIC, &buf)?;
         Ok(buf)
     }
 }
@@ -163,7 +163,7 @@ where
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        self.public_units(Label::custom("public"), &flattened)?;
+        self.public_units(Label::PUBLIC, &flattened)?;
         Ok(())
     }
 }
@@ -199,7 +199,7 @@ where
 {
     fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
         for &byte in input {
-            self.public_units(label.clone(), &[Fp::from(byte)])?;
+            self.public_units(label, &[Fp::from(byte)])?;
         }
         Ok(self)
     }

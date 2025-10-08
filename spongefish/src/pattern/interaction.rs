@@ -20,73 +20,43 @@ pub struct Interaction {
     length: Length,
 }
 
-/// Labels for interactions.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub enum Label {
-    /// Predefined common labels
-    Bytes,
-    Points,
-    Scalars,
-    Challenge,
-    Nonce,
-    Public,
-    Message,
-    Hint,
-    /// Custom string label
-    Custom(String),
-}
+/// Labels for interactions 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct Label(&'static str);
 
 impl Label {
-    /// Create a new custom label from a string
-    pub fn custom(s: &str) -> Self {
-        Self::Custom(s.to_string())
+    /// Create a label from a static string
+    pub const fn new(s: &'static str) -> Self {
+        Self(s)
     }
     
-    /// Get the string representation of the label
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Bytes => "bytes",
-            Self::Points => "points", 
-            Self::Scalars => "scalars",
-            Self::Challenge => "challenge",
-            Self::Nonce => "nonce",
-            Self::Public => "public",
-            Self::Message => "message",
-            Self::Hint => "hint",
-            Self::Custom(s) => s.as_str(),
-        }
+    /// Predefined common labels as constants
+    pub const BYTES: Self = Self("bytes");
+    pub const UNITS: Self = Self("units");
+    pub const COORDINATES: Self = Self("coordinates");
+    pub const BASE_FIELD_COEFFICIENTS: Self = Self("base-field-coefficients");
+    pub const PUBLIC: Self = Self("public");
+    pub const RATCHET: Self = Self("ratchet");
+    pub const PROTOCOL: Self = Self("protocol");
+    pub const HINT: Self = Self("hint");
+    
+    /// Get the string representation
+    pub const fn as_str(&self) -> &'static str {
+        self.0
     }
 }
 
 impl From<&'static str> for Label {
     fn from(s: &'static str) -> Self {
-        match s {
-            "bytes" => Self::Bytes,
-            "points" => Self::Points,
-            "scalars" => Self::Scalars,
-            "challenge" => Self::Challenge,
-            "nonce" => Self::Nonce,
-            "public" => Self::Public,
-            "message" => Self::Message,
-            "hint" => Self::Hint,
-            s => Self::Custom(s.to_string()),
-        }
+        Self(s)
     }
 }
 
-impl From<String> for Label {
-    fn from(s: String) -> Self {
-        match s.as_str() {
-            "bytes" => Self::Bytes,
-            "points" => Self::Points,
-            "scalars" => Self::Scalars,
-            "challenge" => Self::Challenge,
-            "nonce" => Self::Nonce,
-            "public" => Self::Public,
-            "message" => Self::Message,
-            "hint" => Self::Hint,
-            _ => Self::Custom(s),
-        }
+// Usage with string literals (which are 'static)
+impl Label {
+    /// Convenience for creating labels in a const context
+    pub const fn custom(s: &'static str) -> Self {
+        Self(s)
     }
 }
 

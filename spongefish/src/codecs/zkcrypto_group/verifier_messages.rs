@@ -19,7 +19,7 @@ where
         let mut buf = vec![0; bytes_uniform_modp(F::NUM_BITS)];
 
         for o in output {
-            self.fill_challenge_bytes(label.clone(), &mut buf)?;
+            self.fill_challenge_bytes(label, &mut buf)?;
             *o = from_bytes_mod_order(&buf);
         }
         Ok(self)

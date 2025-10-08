@@ -42,7 +42,7 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.public_bytes(Label::custom("public"), &buf)?;
+        self.public_bytes(Label::PUBLIC, &buf)?;
         Ok(buf)
     }
 }
@@ -58,7 +58,7 @@ where
         let mut buf = vec![0u8; F::extension_degree() as usize * base_field_size];
 
         for o in output.iter_mut() {
-            self.fill_challenge_bytes(label.clone(), &mut buf)?;
+            self.fill_challenge_bytes(label, &mut buf)?;
             *o = F::from_base_prime_field_elems(
                 buf.chunks(base_field_size)
                     .map(F::BasePrimeField::from_be_bytes_mod_order),
@@ -92,7 +92,7 @@ where
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        self.public_units(Label::custom("public"), &flattened)?;
+        self.public_units(Label::PUBLIC, &flattened)?;
         Ok(())
     }
 }
@@ -108,7 +108,7 @@ where
     fn public_points(&mut self, label: Label, input: &[G]) -> Result<Self::Repr, PatternError> {
         for point in input {
             let (x, y) = point.into_affine().xy().unwrap();
-            self.public_units(label.clone(), &[x, y])?;
+            self.public_units(label, &[x, y])?;
         }
         Ok(())
     }
@@ -121,7 +121,7 @@ where
 {
     fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
         for &byte in input {
-            self.public_units(label.clone(), &[Fp::from(byte)])?;
+            self.public_units(label, &[Fp::from(byte)])?;
         }
         Ok(self)
     }
@@ -140,7 +140,7 @@ where
                 output.len(),
             );
             let mut tmp = [Fp::from(0); 1];
-            self.fill_challenge_units(label.clone(), &mut tmp)?;
+            self.fill_challenge_units(label, &mut tmp)?;
             let buf = tmp[0].into_bigint().to_bytes_le();
             output[..len_good].copy_from_slice(&buf[..len_good]);
 
@@ -163,7 +163,7 @@ where
                 output.len(),
             );
             let mut tmp = [Fp::from(0); 1];
-            self.fill_challenge_units(label.clone(), &mut tmp)?;
+            self.fill_challenge_units(label, &mut tmp)?;
             let buf = tmp[0].into_bigint().to_bytes_le();
             output[..len_good].copy_from_slice(&buf[..len_good]);
 

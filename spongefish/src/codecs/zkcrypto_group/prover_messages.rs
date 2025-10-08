@@ -46,7 +46,7 @@ where
         for p in input {
             buf.extend_from_slice(<G as GroupEncoding>::to_bytes(p).as_ref());
         }
-        self.public_bytes(Label::custom("public"), &buf)?;
+        self.public_bytes(Label::PUBLIC, &buf)?;
         Ok(buf)
     }
 }
@@ -89,7 +89,7 @@ where
     fn public_scalars(&mut self, input: &[F]) -> Result<Self::Repr, PatternError> {
         let mut buf = Vec::new();
         input.iter().for_each(|i| buf.extend(i.to_repr().as_ref()));
-        self.public_bytes(Label::custom("public"), &buf)?;
+        self.public_bytes(Label::PUBLIC, &buf)?;
         Ok(buf)
     }
 }

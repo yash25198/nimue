@@ -59,14 +59,14 @@ where
             wrapped.push(Interaction::new::<()>(
                 Hierarchy::Begin,
                 Kind::Protocol,
-                Label::custom("protocol"),
+                Label::PROTOCOL,
                 Length::None,
             ));
             wrapped.extend(self.interactions);
             wrapped.push(Interaction::new::<()>(
                 Hierarchy::End,
                 Kind::Protocol,
-                Label::custom("protocol"),
+                Label::PROTOCOL,
                 Length::None,
             ));
             self.interactions = wrapped;
@@ -144,7 +144,7 @@ where
         self.interact(Interaction::new::<()>(
             Hierarchy::Atomic,
             Kind::Protocol,
-            Label::custom("ratchet"),
+            Label::RATCHET,
             Length::None,
         ))?;
         Ok(self)
