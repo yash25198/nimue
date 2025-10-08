@@ -35,7 +35,7 @@ where
     pattern.message_points(Label::custom("generator"), 1).expect("Failed to add generator pattern");
     pattern.message_points(Label::custom("public_key"), 1).expect("Failed to add public_key pattern");
 
-    pattern.ratchet();
+    pattern.ratchet().expect("Failed to ratchet");
     // Proof: commitment, challenge, response
     pattern.message_points(Label::custom("commitment"), 1).expect("Failed to add commitment pattern");
     pattern.message_scalars(Label::custom("challenge"), 1).expect("Failed to add challenge pattern");
