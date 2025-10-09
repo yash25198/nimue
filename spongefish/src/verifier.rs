@@ -530,15 +530,15 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "Received interaction, but no more expected interactions: Atomic Hint hint_bytes Dynamic u8"
-    )]
     fn test_hint_bytes_verifier_no_hint_op() {
-        let pattern = PatternState::<u8>::new().finalize();
+        let mut pattern = PatternState::<u8>::new();
+        pattern.public_bytes(Label::custom("public_bytes"), 2).unwrap();
+        let pattern = pattern.finalize();
         // Manually construct a hint buffer (length = 6, followed by bytes)
         let narg = hex::decode("06000000616263313233").unwrap();
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), &narg);
-        vs.hint_bytes(Label::custom("hint_bytes")).unwrap();
+        let err = vs.hint_bytes(Label::custom("hint_bytes"));
+        assert!(err.is_err());
     }
 
     #[test]
