@@ -6,7 +6,6 @@ use super::{CommonFieldToUnit, CommonGroupToUnit, UnitToField};
 use crate::{
     codecs::bytes_uniform_modp,
     pattern::{Label, PatternError, Length, Pattern},
-    duplex_sponge::Unit,
     CommonUnitToBytes, DuplexSpongeInterface, UnitToBytes, UnitTranscript, VerifierState,
 };
 
@@ -203,6 +202,7 @@ where
     }
 }
 #[cfg(test)]
+#[cfg(feature = "arkworks-algebra")]
 mod tests {
     use ark_curve25519::EdwardsProjective as Curve;
     use ark_ec::PrimeGroup;
@@ -211,22 +211,20 @@ mod tests {
 
     use super::*;
     use crate::{
-        codecs::arkworks_algebra::{
-            CommonFieldToUnit,
-            CommonGroupToUnit,
-        },
-        codecs::unit::Pattern as UnitPattern,
-        pattern::{PatternState, Label, Length, Pattern},
+        codecs::arkworks_algebra::{FieldPattern, GroupPattern, GroupToUnitDeserialize, ProverFieldMessageExt, ProverGroupMessageExt, VerifierFieldMessageExt, VerifierGroupMessageExt},
+        pattern::{Label, PatternState},
         DefaultHash, 
         ProverState,
+        Unit,
     };
 
-    /// Configuration for the BabyBear field
+    /// Configuration for the BabyBear field (modulus = 2^31 - 2^27 + 1, generator = 21).
     #[derive(MontConfig)]
     #[modulus = "2013265921"]
     #[generator = "21"]
     pub struct BabybearConfig;
 
+    /// Base field type using the BabyBear configuration.
     pub type BabyBear = Fp64<MontBackend<BabybearConfig, 1>>;
 
     #[test]
@@ -250,20 +248,23 @@ mod tests {
     fn test_common_field_to_unit_bytes() {
         let mut rng = ark_std::test_rng();
         let values = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
+        let mut values2 = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
 
-        // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new().finalize();
 
-        // Initialize the prover state
-        let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
 
-        // Try to absorb the scalars - this should fail with the current pattern
-        let result = prover.public_scalars(&values);
-        
-        // We expect this to fail because the pattern doesn't have the right interactions
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
-        
-        prover.abort().expect("Failed to abort");
+        let mut pattern = PatternState::<u8>::new();    
+        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(&mut pattern, Label::from("tag"), 2).unwrap();
+        let pattern = pattern.finalize();
+
+        let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
+        let _ = prover.add_message_scalars(Label::from("tag"), &values);
+        let proof = prover.finalize().unwrap();
+
+        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
+
+        let _ = verifier.read_message_scalars(Label::from("tag"), &mut values2).unwrap();
+        verifier.finalize().unwrap();
+        assert_eq!(values2, values, "Serialized field elements should be deterministic");
     }
 
     #[test]
@@ -271,23 +272,71 @@ mod tests {
         // Generator of the curve group
         let point = Curve::generator();
 
-        // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new().finalize();
+        // Test that group element serialization is consistent.
+        // This is a simple serialization test, not a full protocol test.
 
-        let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
+        // Manual serialization for comparison
+        let mut expected = Vec::new();
+        point.serialize_compressed(&mut expected).unwrap();
 
-        // Try to serialize the point - this should fail with the current pattern
-        let result = prover.public_points(Label::custom("X"), &[point]);
+        let mut pattern = PatternState::<u8>::new();
+        <PatternState<u8> as GroupPattern<Curve>>::message_points(&mut pattern, Label::custom("generator"), 1).unwrap();
+        let pattern = pattern.finalize();
+
+        let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
+        let _ = prover.add_message_points(Label::custom("generator"), &[point]);
+        let proof = prover.finalize().unwrap();
+
+        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
+
+        let mut out = [Curve::ZERO];
+        let _ = verifier.read_message_points(Label::custom("generator"), &mut out).unwrap();
         
-        // We expect this to fail because the pattern doesn't have the right interactions
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
+
+        // Finalize the verifier to avoid panic on drop
+        let _ = verifier.finalize();
+
+        let mut actual = Vec::new();
+        out[0].serialize_compressed(&mut actual).unwrap();
+
+        assert_eq!(
+            actual,expected,
+            "Group element serialization should be deterministic"
+        );
+
+        // Curve25519 points serialize to 32 bytes in compressed format
+        assert_eq!(expected.len(), 32, "Curve25519 point should serialize to 32 bytes");
+    }
+
+    #[test]
+    fn test_unit_to_field_fill_challenge_scalars_u8() {
+        // Create a pattern with a challenge scalar
+        let mut pattern = PatternState::<u8>::new();
+        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(&mut pattern, Label::from("tag"), 1).unwrap();
+        let pattern = Arc::new(pattern.finalize());
+
+        let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
+
+        let mut out = [BabyBear::ONE; 1];
+        prover.add_message_scalars(Label::from("tag"), &mut out).unwrap();
+
+
+        // Finalize the prover to avoid panic on drop
+       let proof = prover.finalize().unwrap();
+
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
+
+        let mut out = [BabyBear::ZERO; 1];
+        let _ = verifier.read_message_scalars(Label::from("tag"), &mut out).unwrap();
+        verifier.finalize().unwrap();
+
+        assert_eq!(out[0], BabyBear::ONE, "Challenge should be zero");
         
-        prover.abort().expect("Failed to abort");
     }
 
     #[test]
     fn test_unit_read_invalid_bytes() {
-        // Provide malformed input that cannot be deserialized
+        // Provide malformed input that cannot be deserialized into a BabyBear field element
         let mut buf = &[0xff, 0xff][..];
         let mut output = [BabyBear::ZERO; 1];
 

@@ -30,16 +30,19 @@ where
         // NO begin/end here - pattern trait handles that
         // Just do the inner atomic operation
         
-        // Calculate buffer size for each scalar
+        // Calculate buffer size for ALL scalars
         let scalar_bytes = bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
-        let mut buf = vec![0u8; scalar_bytes];
+        let total_bytes = output.len() * scalar_bytes;
+        let mut buf = vec![0u8; total_bytes];
         
-        // Read and deserialize each scalar from bytes
-        for o in output.iter_mut() {
-            // Fill bytes directly - this matches the pattern's inner message_bytes call
-            self.fill_next_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
-            *o = F::deserialize_compressed(buf.as_slice())
-                .map_err(|_| PatternError::DeserializationError)?;
+        // Read all bytes at once - this matches the pattern's single message_bytes call
+        self.fill_next_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
+        
+        // Deserialize each scalar from its chunk
+        for (i, o) in output.iter_mut().enumerate() {
+            let start = i * scalar_bytes;
+            let end = start + scalar_bytes;
+            *o = F::deserialize_compressed(&buf[start..end])?;
         }
         
         Ok(self)
@@ -55,16 +58,19 @@ where
         // NO begin/end here - pattern trait handles that
         // Just do the inner atomic operation
         
-        // Calculate buffer size for each point
+        // Calculate buffer size for ALL points
         let point_size = G::default().compressed_size();
-        let mut buf = vec![0u8; point_size];
+        let total_bytes = output.len() * point_size;
+        let mut buf = vec![0u8; total_bytes];
         
-        // Read and deserialize each point from bytes
-        for o in output.iter_mut() {
-            // Fill bytes directly - this matches the pattern's inner message_bytes call
-            self.fill_next_bytes(Label::SERIALIZED_GROUP, &mut buf)?;
-            *o = G::deserialize_compressed(buf.as_slice())
-                .map_err(|_| PatternError::DeserializationError)?;
+        // Read all bytes at once - this matches the pattern's single message_bytes call
+        self.fill_next_bytes(Label::SERIALIZED_GROUP, &mut buf)?;
+        
+        // Deserialize each point from its chunk
+        for (i, o) in output.iter_mut().enumerate() {
+            let start = i * point_size;
+            let end = start + point_size;
+            *o = G::deserialize_compressed(&buf[start..end])?;
         }
         
         Ok(self)

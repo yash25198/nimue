@@ -26,9 +26,9 @@ pub trait UnitToBytes {
 pub trait ByteTranscript: CommonUnitToBytes + UnitToBytes {}
 
 pub trait BytesToUnitDeserialize {
-    fn fill_next_bytes(&mut self, label: Label, input: &mut [u8]) -> Result<&mut Self, std::io::Error>;
+    fn fill_next_bytes(&mut self, label: Label, input: &mut [u8]) -> Result<&mut Self, PatternError>;
 
-    fn next_bytes<const N: usize>(&mut self, label: Label) -> Result<[u8; N], std::io::Error> {
+    fn next_bytes<const N: usize>(&mut self, label: Label) -> Result<[u8; N], PatternError> {
         let mut input = [0u8; N];
         self.fill_next_bytes(label, &mut input)?;
         Ok(input)

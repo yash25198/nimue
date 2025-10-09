@@ -26,6 +26,9 @@ pub enum ProofError {
     InvalidProof,
     /// Serialization/Deserialization led to errors.
     SerializationError,
+
+    /// Pattern error
+    PatternError(String),
 }
 
 /// The result type when trying to prove or verify a proof using Fiat-Shamir.
@@ -36,6 +39,7 @@ impl Display for ProofError {
         match self {
             Self::SerializationError => write!(f, "Serialization Error"),
             Self::InvalidProof => write!(f, "Invalid proof"),
+            Self::PatternError(s) => write!(f, "Pattern error: {}", s),
         }
     }
 }
@@ -50,6 +54,7 @@ impl From<std::io::Error> for ProofError {
 
 impl From<crate::pattern::PatternError> for ProofError {
     fn from(_value: crate::pattern::PatternError) -> Self {
-        Self::SerializationError
+        // convert to string and return
+        Self::PatternError(format!("{}", _value))
     }
 }

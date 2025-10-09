@@ -51,34 +51,34 @@ fn test_prover_bytewriter_correct() {
 
 #[test]
 #[should_panic(
-    expected = "Received interaction, but no more expected interactions: Begin Message bytes Fixed(1) u8"
+    expected = "UnexpectedInteraction"
 )]
 fn test_prover_bytewriter_invalid() {
     // Expect exactly one add_bytes call.
     let mut pattern = PatternState::<u8>::new();
     pattern.begin_message::<u8>(Label::custom("bytes"), Length::Fixed(1)).expect("Failed to begin message");
-    pattern.message_units(Label::custom("units"), 1);
+    pattern.message_units(Label::custom("units"), 1).expect("Failed to add message units");
     pattern.end_message::<u8>(Label::custom("bytes"), Length::Fixed(1)).expect("Failed to end message");
     let pattern = pattern.finalize();
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
-    prover_state.add_bytes(Label::BYTES, &[0u8]);
-    prover_state.add_bytes(Label::BYTES, &[1u8]);
+    prover_state.add_bytes(Label::BYTES, &[0u8]).expect("First add_bytes should succeed");
+    prover_state.add_bytes(Label::BYTES, &[1u8]).expect("Second add_bytes should fail");
 }
 
 #[test]
 #[should_panic(
-    expected = "Received interaction, but no more expected interactions: Atomic Public public_units Fixed(1) u8"
+    expected = "UnexpectedInteraction"
 )]
 fn test_prover_public_units_invalid() {
-    // Expect exactly one add_bytes call.
+    // Expect exactly one public_units call.
     let mut pattern = PatternState::<u8>::new();
-    pattern.public_units(Label::custom("public_units"), 1);
+    pattern.public_units(Label::custom("public_units"), 1).expect("Failed to add public units to pattern");
     let pattern = pattern.finalize();
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
-    prover_state.public_units(Label::custom("public_units"), &[0u8]);
-    prover_state.public_units(Label::custom("public_units"), &[1u8]);
+    prover_state.public_units(Label::custom("public_units"), &[0u8]).expect("First public_units should succeed");
+    prover_state.public_units(Label::custom("public_units"), &[1u8]).expect("Second public_units should fail");
 }
 
 /// A protocol flow whose pattern does not match should panic.
@@ -161,16 +161,16 @@ fn test_transcript_readwrite() {
 
     let mut verifier_state: VerifierState = VerifierState::new(Arc::new(pattern), &proof);
     let mut input = [0u8; 10];
-    verifier_state.fill_next_units(Label::custom("units"), Kind::Message, &mut input).unwrap();
+    verifier_state.fill_next_units(Label::custom("units"), &mut input).unwrap();
     assert_eq!(input, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     assert_eq!(
         hex::encode(verifier_state.challenge_bytes::<10>(Label::custom("fill_challenge_units")).unwrap()),
         "0ccd176155e008b158ad"
     );
     let mut input = [0u8; 5];
-    verifier_state.fill_next_units(Label::custom("units"), Kind::Message, &mut input).unwrap();
+    verifier_state.fill_next_units(Label::custom("units"), &mut input).unwrap();
     assert_eq!(input, [10, 11, 12, 13, 14]);
-    verifier_state.fill_next_units(Label::custom("units"), Kind::Message, &mut input).unwrap();
+    verifier_state.fill_next_units(Label::custom("units"), &mut input).unwrap();
     assert_eq!(input, [15, 16, 17, 18, 19]);
     assert_eq!(
         hex::encode(verifier_state.challenge_bytes::<10>(Label::custom("fill_challenge_units")).unwrap()),
@@ -201,21 +201,24 @@ fn test_incomplete_domsep() {
 fn test_prover_empty_absorb() {
     // Pattern expects one add_units and one challenge
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_units(Label::custom("units"), 0);
-    pattern.challenge_units(Label::custom("fill_challenge_units"), 0);
+    pattern.message_units(Label::custom("units"), 0).expect("Failed to add message units");
+    pattern.challenge_units(Label::custom("fill_challenge_units"), 0).expect("Failed to add challenge units");
     let pattern = pattern.finalize();
 
     let mut prover_state: ProverState = ProverState::from(&pattern);
-    prover_state.add_units(Label::UNITS, b"");
-    let _challenge = prover_state.challenge_bytes::<0>(Label::custom("fill_challenge_units"));
-    let proof = prover_state.finalize().unwrap();
+    prover_state.add_units(Label::UNITS, b"").expect("Failed to add units");
+    let mut challenge = [0u8; 0];
+    prover_state.fill_challenge_units(Label::custom("fill_challenge_units"), &mut challenge).expect("Failed to get challenge");
+    let proof = prover_state.finalize().expect("Failed to finalize");
     assert!(proof.is_empty());
 
     let mut vstate: VerifierState<Keccak> = VerifierState::new(Arc::new(pattern), &proof);
-    let mut out = [0_u8; 0];
-    vstate.fill_next_units(Label::custom("units"), Kind::Message, &mut out).unwrap();
-    let _challenge = vstate.challenge_bytes::<0>(Label::custom("fill_challenge_units"));
-    vstate.finalize();
+    // For 0-length units, we don't read from the proof, but we still need to consume the interaction
+    // The verifier state constructor handles this automatically based on the pattern
+    let mut vchallenge = [0u8; 0];
+    vstate.fill_next_units(Label::custom("units"), &mut vchallenge).expect("Failed to get challenge");
+    vstate.fill_challenge_units(Label::custom("fill_challenge_units"), &mut vchallenge).expect("Failed to get challenge");
+    vstate.finalize().expect("Failed to finalize");
 }
 
 /// Absorbs and squeeze over byte-Units

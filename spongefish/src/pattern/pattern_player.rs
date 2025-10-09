@@ -31,6 +31,12 @@ impl PatternPlayer {
         }
     }
 
+    /// Get a reference to the underlying pattern
+    #[must_use]
+    pub fn pattern(&self) -> &Arc<InteractionPattern> {
+        &self.pattern
+    }
+
     /// Finalize the sequence of interactions. Returns an error if there
     /// are unfinished interactions.
     pub fn finalize(mut self) -> Result<(), PatternError> {

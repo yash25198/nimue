@@ -29,17 +29,30 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     #[must_use]
     pub fn new(pattern: Arc<InteractionPattern>, narg_string: &'a [u8]) -> Self {
         let iv = pattern.domain_separator();
-        Self {
-            pattern: PatternPlayer::new(pattern),
+        let mut state = Self {
+            pattern: PatternPlayer::new(pattern.clone()),
             duplex_sponge: H::new(iv),
             narg_string,
             cursor: 0, // Index of the next byte to read from the NARG string
             _unit_type: PhantomData,
+        };
+        // Handle the automatic protocol wrapping that PatternState::finalize() adds
+        // The pattern starts with Begin Protocol, so we need to consume it
+        if pattern.interactions().first()
+            .map(|i| i.hierarchy() == Hierarchy::Begin && i.kind() == Kind::Protocol)
+            .unwrap_or(false)
+        {
+            if let Err(e) = state.pattern.begin::<()>(Label::PROTOCOL, Kind::Protocol, Length::None) {
+                // If we fail to begin, mark as finalized to avoid panic in Drop
+                let _ = state.pattern.abort();
+                panic!("Failed to begin protocol: {e}");
+            }
         }
+        state
     }
 
     /// Read units from the proof
-    pub fn fill_next_units(&mut self, label: Label, output: &mut [U]) -> ProofResult<&mut Self> {
+    pub fn fill_next_units(&mut self, label: Label, output: &mut [U]) -> Result<&mut Self, PatternError> {
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
@@ -50,11 +63,10 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         // Read from narg_string and update cursor
         let bytes_needed = output.len() * std::mem::size_of::<U>();
         if self.cursor + bytes_needed > self.narg_string.len() {
-            return Err(PatternError::DeserializationError.into());
+            return Err(PatternError::SizeError(format!("Insufficient transcript remaining for deserialization")).into());
         }
 
-        U::read(&mut &self.narg_string[self.cursor..self.cursor + bytes_needed], output)
-            .map_err(|_| PatternError::DeserializationError)?;
+        U::read(&mut &self.narg_string[self.cursor..self.cursor + bytes_needed], output).map_err(|e| PatternError::DeserializationError(format!("Deserialization error: {}", e)))?;
         
         self.cursor += bytes_needed;
         
@@ -165,7 +177,17 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         Ok(())
     }
 
-    pub fn finalize(self) -> Result<(), PatternError> {
+    pub fn finalize(mut self) -> Result<(), PatternError> {
+        // Handle the automatic protocol wrapping that PatternState::finalize() adds
+        // The pattern ends with End Protocol, so we need to consume it
+        let arc_pattern = self.pattern.pattern().clone();
+        if arc_pattern.interactions().last()
+            .map(|i| i.hierarchy() == Hierarchy::End && i.kind() == Kind::Protocol)
+            .unwrap_or(false)
+        {
+            self.pattern.end::<()>(Label::PROTOCOL, Kind::Protocol, Length::None)?;
+        }
+        
         self.pattern.finalize()?;
         Ok(())
     }
@@ -233,15 +255,11 @@ where
 
 impl<H: DuplexSpongeInterface<u8>> BytesToUnitDeserialize for VerifierState<'_, H, u8> {
     #[inline]
-    fn fill_next_bytes(&mut self, label: Label, output: &mut [u8]) -> Result<&mut Self, std::io::Error> {
-        self.pattern.begin_message::<u8>(label, Length::Fixed(output.len()))
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Pattern error"))?;
+    fn fill_next_bytes(&mut self, label: Label, output: &mut [u8]) -> Result<&mut Self, PatternError> {
+        self.pattern.begin_message::<u8>(label, Length::Fixed(output.len()))?;
+        self.fill_next_units(Label::UNITS, output)?;
         
-        self.fill_next_units(Label::UNITS, output)
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Pattern error"))?;
-        
-        self.pattern.end_message::<u8>(label, Length::Fixed(output.len()))
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Pattern error"))?;
+        self.pattern.end_message::<u8>(label, Length::Fixed(output.len()))?;
         
         Ok(self)
     }
