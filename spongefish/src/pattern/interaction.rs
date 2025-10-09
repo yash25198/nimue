@@ -35,6 +35,7 @@ impl Label {
     pub const UNITS: Self = Self("units");
     pub const COORDINATES: Self = Self("coordinates");
     pub const BASE_FIELD_COEFFICIENTS: Self = Self("base-field-coefficients");
+    pub const BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN : Self = Self("base-field-coefficients-little-endian");
     pub const SERIALIZED_GROUP: Self = Self("serialized-group");
     pub const PUBLIC: Self = Self("public");
     pub const RATCHET: Self = Self("ratchet");

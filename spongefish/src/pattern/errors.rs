@@ -20,4 +20,6 @@ pub enum PatternError {
     DepthExceeded { limit: usize },
     #[error("Transcript not finished, expecting {expected}")]
     TranscriptNotFinished { expected: Interaction },
+    #[error("Deserialization error")]
+    DeserializationError,
 }

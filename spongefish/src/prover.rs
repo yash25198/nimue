@@ -1,4 +1,4 @@
-// prover.rs
+// prover.rs - Corrected implementation
 use std::{marker::PhantomData, sync::Arc};
 
 use rand::{CryptoRng, RngCore};
@@ -6,7 +6,9 @@ use zeroize::Zeroize;
 
 use super::{duplex_sponge::DuplexSpongeInterface, keccak::Keccak, DefaultHash, DefaultRng};
 use crate::{
-    duplex_sponge::Unit, pattern::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, Pattern, PatternError, PatternPlayer}, BytesToUnitSerialize, CommonUnitToBytes, UnitToBytes, UnitTranscript
+    duplex_sponge::Unit, 
+    pattern::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, Pattern, PatternError, PatternPlayer}, 
+    BytesToUnitSerialize, CommonUnitToBytes, UnitToBytes, UnitTranscript
 };
 
 /// [`ProverState`] is the prover state of an interactive proof (IP) system.
@@ -94,6 +96,7 @@ where
         Self::new(Arc::new(pattern.clone()), DefaultRng::default())
     }
 }
+
 impl<H, U, R> ProverState<H, U, R>
 where
     U: Unit,
@@ -119,8 +122,8 @@ where
         }
     }
 
-     /// Add units with a label to the transcript
-     pub fn add_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
+    /// Add units with a label to the transcript
+    pub fn add_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
@@ -208,7 +211,8 @@ where
         self.narg_string.extend_from_slice(hint);
         Ok(self)
     }
-    pub fn abort(mut self) -> Result<(), crate::pattern::PatternError> {
+
+    pub fn abort(mut self) -> Result<(), PatternError> {
         self.pattern.abort()?;
         self.duplex_sponge.zeroize();
         self.rng.ds.zeroize();
@@ -216,7 +220,7 @@ where
         Ok(())
     }
 
-    pub fn finalize(mut self) -> Result<Vec<u8>, crate::pattern::PatternError> {
+    pub fn finalize(mut self) -> Result<Vec<u8>, PatternError> {
         self.pattern.finalize()?;
         self.duplex_sponge.zeroize();
         self.rng.ds.zeroize();
@@ -232,6 +236,7 @@ where
     }
 }
 
+// FIXED: UnitTranscript implementation - no double wrapping
 impl<H, U, R> UnitTranscript<U> for ProverState<H, U, R>
 where
     U: Unit,
@@ -239,14 +244,11 @@ where
     R: RngCore + CryptoRng,
 {
     fn public_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
-        // Use proper begin_public to match the pattern
-        self.pattern.begin_public::<U>(label, Length::Fixed(input.len()))?;
-
-        // Process the atomic interaction
+        // Record single atomic interaction for public units
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
-            Label::UNITS,
+            label,
             Length::Fixed(input.len()),
         ))?;
 
@@ -255,29 +257,20 @@ where
         U::write(input, &mut self.narg_string)
             .map_err(|_| PatternError::AlreadyFinalized)?;
         self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
-
-        // Use proper end_public to match the pattern
-        self.pattern.end_public::<U>(label, Length::Fixed(input.len()))?;
         
         Ok(self)
     }
 
     fn fill_challenge_units(&mut self, label: Label, output: &mut [U]) -> Result<&mut Self, PatternError> {
-        // Use proper begin_challenge to match the pattern
-        self.pattern.begin_challenge::<U>(label, Length::Fixed(output.len()))?;
-
-        // Process the atomic interaction
+        // Record single atomic interaction for challenge units
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::UNITS,
+            label,
             Length::Fixed(output.len()),
         ))?;
 
         self.duplex_sponge.squeeze_unchecked(output);
-
-        // Use proper end_challenge to match the pattern
-        self.pattern.end_challenge::<U>(label, Length::Fixed(output.len()))?;
         
         Ok(self)
     }
@@ -296,17 +289,38 @@ where
     }
 }
 
+// Implements Pattern trait for ProverState by delegating to the internal PatternPlayer
+impl<H, U, R> crate::pattern::Pattern for ProverState<H, U, R>
+where
+    U: Unit,
+    H: DuplexSpongeInterface<U>,
+    R: RngCore + CryptoRng,
+{
+    fn abort(&mut self) -> Result<(), PatternError> {
+        self.pattern.abort()
+    }
+
+    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+        self.pattern.begin::<T>(label, kind, length)?;
+        Ok(self)
+    }
+
+    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+        self.pattern.end::<T>(label, kind, length)?;
+        Ok(self)
+    }
+}
+
 impl<H, R> BytesToUnitSerialize for ProverState<H, u8, R>
 where
     H: DuplexSpongeInterface<u8>,
     R: RngCore + CryptoRng,
 {
     fn add_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
-        self.pattern.begin_message::<u8>(Label::BYTES, Length::Fixed(input.len()))?;
-        self.add_units(label, input)?;
-        self.pattern.end_message::<u8>(Label::BYTES, Length::Fixed(input.len()))?;
+        self.pattern.begin_message::<u8>(label, Length::Fixed(input.len()))?;
+        self.add_units(Label::UNITS, input)?;
+        self.pattern.end_message::<u8>(label, Length::Fixed(input.len()))?;
         Ok(self)
-
     }
 }
 
@@ -329,6 +343,51 @@ where
         self.fill_challenge_units(label, output)
     }
 }
+
+// Implements Pattern trait for byte operations
+impl<H, R> crate::codecs::bytes::Pattern for ProverState<H, u8, R>
+where
+    H: DuplexSpongeInterface<u8>,
+    R: RngCore + CryptoRng,
+{
+    fn public_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
+        self.pattern.begin_public::<u8>(label, Length::Fixed(size))?;
+        self.pattern.interact(Interaction::new::<u8>(
+            Hierarchy::Atomic,
+            Kind::Public,
+            Label::UNITS,
+            Length::Fixed(size),
+        ))?;
+        self.pattern.end_public::<u8>(label, Length::Fixed(size))?;
+        Ok(self)
+    }
+
+    fn message_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
+        self.pattern.begin_message::<u8>(label, Length::Fixed(size))?;
+        self.pattern.interact(Interaction::new::<u8>(
+            Hierarchy::Atomic,
+            Kind::Message,
+            Label::UNITS,
+            Length::Fixed(size),
+        ))?;
+        self.pattern.end_message::<u8>(label, Length::Fixed(size))?;
+        Ok(self)
+    }
+
+    fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
+        self.pattern.begin_challenge::<u8>(label, Length::Fixed(size))?;
+        self.pattern.interact(Interaction::new::<u8>(
+            Hierarchy::Atomic,
+            Kind::Challenge,
+            Label::UNITS,
+            Length::Fixed(size),
+        ))?;
+        self.pattern.end_challenge::<u8>(label, Length::Fixed(size))?;
+        Ok(self)
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
