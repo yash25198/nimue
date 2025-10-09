@@ -1,5 +1,3 @@
-// deserialize.rs - FIXED: Remove double wrapping + proper curve reconstruction
-
 use ark_ec::{
     short_weierstrass::{Affine as SWAffine, SWCurveConfig},
     twisted_edwards::{Affine as TEAffine, TECurveConfig},

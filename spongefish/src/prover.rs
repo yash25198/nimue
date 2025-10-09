@@ -1,4 +1,3 @@
-// prover.rs - Corrected implementation
 use std::{marker::PhantomData, sync::Arc};
 
 use rand::{CryptoRng, RngCore};
@@ -236,25 +235,6 @@ where
     }
 }
 
-impl<H, R> ProverState<H, u8, R>
-where
-    H: DuplexSpongeInterface,
-    R: RngCore + CryptoRng,
-{
-    /// Helper to squeeze challenge bytes with proper nested pattern structure.
-    /// 
-    /// This handles the pattern: begin(label) -> atomic(UNITS) -> squeeze -> end(label)
-    pub(crate) fn squeeze_challenge_bytes_nested(
-        &mut self,
-        label: Label,
-        output: &mut [u8],
-    ) -> Result<&mut Self, PatternError> {
-        self.pattern.begin_challenge::<u8>(label, Length::Fixed(output.len()))?;
-        self.duplex_sponge.squeeze_unchecked(output);
-        self.pattern.end_challenge::<u8>(label, Length::Fixed(output.len()))?;
-        Ok(self)
-    }
-}
 impl<H, U, R> UnitTranscript<U> for ProverState<H, U, R>
 where
     U: Unit,
@@ -358,49 +338,9 @@ where
     R: RngCore + CryptoRng,
 {
     fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> Result<&mut Self, PatternError> {
-        self.fill_challenge_units(label, output)
-    }
-}
-
-// Implements Pattern trait for byte operations
-impl<H, R> crate::codecs::bytes::Pattern for ProverState<H, u8, R>
-where
-    H: DuplexSpongeInterface<u8>,
-    R: RngCore + CryptoRng,
-{
-    fn public_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.pattern.begin_public::<u8>(label, Length::Fixed(size))?;
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Public,
-            Label::UNITS,
-            Length::Fixed(size),
-        ))?;
-        self.pattern.end_public::<u8>(label, Length::Fixed(size))?;
-        Ok(self)
-    }
-
-    fn message_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.pattern.begin_message::<u8>(label, Length::Fixed(size))?;
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            Label::UNITS,
-            Length::Fixed(size),
-        ))?;
-        self.pattern.end_message::<u8>(label, Length::Fixed(size))?;
-        Ok(self)
-    }
-
-    fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.pattern.begin_challenge::<u8>(label, Length::Fixed(size))?;
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Challenge,
-            Label::UNITS,
-            Length::Fixed(size),
-        ))?;
-        self.pattern.end_challenge::<u8>(label, Length::Fixed(size))?;
+        self.pattern.begin_challenge::<u8>(label, Length::Fixed(output.len()))?;
+        self.fill_challenge_units(Label::UNITS, output)?;
+        self.pattern.end_challenge::<u8>(label, Length::Fixed(output.len()))?;
         Ok(self)
     }
 }
@@ -606,9 +546,11 @@ mod tests {
 
         let mut prover: ProverState = ProverState::from(&pattern);
         // indicate a hint without a matching hint_bytes interaction
-        prover.hint_bytes(Label::custom("hint_bytes"), b"some_hint").expect("Failed to add hint bytes");
+        let _ = prover
+            .hint_bytes(Label::custom("hint_bytes"), b"some_hint")
+            .expect("Should have failed due to missing hint interaction");
     }
-
+    
     #[test]
     fn test_hint_bytes_is_deterministic() {
         let mut pattern = PatternState::<u8>::new();

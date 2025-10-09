@@ -1,4 +1,3 @@
-
 use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
@@ -78,14 +77,14 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     }
 
     /// Begin a challenge interaction
-    pub fn begin_challenge(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
-        self.pattern.begin_challenge::<U>(label, Length::Fixed(count))?;
+    pub fn begin_challenge<T>(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
+        self.pattern.begin_challenge::<T>(label, Length::Fixed(count))?;
         Ok(self)
     }
 
     /// End a challenge interaction
-    pub fn end_challenge(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
-        self.pattern.end_challenge::<U>(label, Length::Fixed(count))?;
+    pub fn end_challenge<T>(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
+        self.pattern.end_challenge::<T>(label, Length::Fixed(count))?;
         Ok(self)
     }
 
@@ -172,30 +171,6 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     }
 }
 
-impl<'a, H> VerifierState<'a, H, u8>
-where
-    H: DuplexSpongeInterface,
-{
-    /// Helper to squeeze challenge bytes with proper nested pattern structure.
-    /// 
-    /// This handles the pattern: begin(label) -> atomic(UNITS) -> squeeze -> end(label)
-    pub(crate) fn squeeze_challenge_bytes_nested(
-        &mut self,
-        label: Label,
-        output: &mut [u8],
-    ) -> Result<&mut Self, PatternError> {
-        self.pattern.begin_challenge::<u8>(label, Length::Fixed(output.len()))?;
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Challenge,
-            Label::UNITS,
-            Length::Fixed(output.len()),
-        ))?;
-        self.duplex_sponge.squeeze_unchecked(output);
-        self.pattern.end_challenge::<u8>(label, Length::Fixed(output.len()))?;
-        Ok(self)
-    }
-}
 
 impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'_, H, U> {
     fn public_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
@@ -280,7 +255,10 @@ impl<H: DuplexSpongeInterface<u8>> CommonUnitToBytes for VerifierState<'_, H, u8
 
 impl<H: DuplexSpongeInterface<u8>> UnitToBytes for VerifierState<'_, H, u8> {
     fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> Result<&mut Self, PatternError> {
-        self.fill_challenge_units(label, output)
+        self.pattern.begin_challenge::<u8>(label, Length::Fixed(output.len()))?;
+        self.fill_challenge_units(Label::UNITS, output)?;
+        self.pattern.end_challenge::<u8>(label, Length::Fixed(output.len()))?;
+        Ok(self)
     }
 }
 

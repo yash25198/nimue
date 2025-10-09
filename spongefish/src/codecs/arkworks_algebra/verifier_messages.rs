@@ -5,7 +5,7 @@ use ark_serialize::CanonicalSerialize;
 use super::{CommonFieldToUnit, CommonGroupToUnit, UnitToField};
 use crate::{
     codecs::bytes_uniform_modp,
-    pattern::{Label, PatternError},
+    pattern::{Label, PatternError, Length, Pattern},
     duplex_sponge::Unit,
     CommonUnitToBytes, DuplexSpongeInterface, UnitToBytes, UnitTranscript, VerifierState,
 };
@@ -56,26 +56,26 @@ where
     H: DuplexSpongeInterface,
 {
     fn fill_challenge_scalars(&mut self, label: Label, output: &mut [F]) -> Result<&mut Self, PatternError> {
-        use crate::pattern::{Pattern, Length};
         
         let base_field_size = bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
-        let total_bytes = output.len() * F::extension_degree() as usize * base_field_size;
+        let ext_degree = F::extension_degree() as usize;
+        let element_size = ext_degree * base_field_size;
+        let total_bytes = output.len() * element_size;
+        
         let mut buf = vec![0u8; total_bytes];
 
-        Pattern::begin_challenge::<F>(self, label, Length::Fixed(output.len()))?;
-        self.squeeze_challenge_bytes_nested(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
-        Pattern::end_challenge::<F>(self, label, Length::Fixed(output.len()))?;
-
-        // Convert bytes to field elements
-        for (i, o) in output.iter_mut().enumerate() {
-            let start = i * F::extension_degree() as usize * base_field_size;
-            let end = start + F::extension_degree() as usize * base_field_size;
-            *o = F::from_base_prime_field_elems(
-                buf[start..end].chunks(base_field_size)
+        self.pattern.begin_challenge::<F>(label, Length::Fixed(output.len()))?;
+        self.fill_challenge_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
+        self.pattern.end_challenge::<F>(label, Length::Fixed(output.len()))?;
+        // Convert bytes to field elements by chunking the buffer
+        for (elem, chunk) in output.iter_mut().zip(buf.chunks_exact(element_size)) {
+            *elem = F::from_base_prime_field_elems(
+                chunk.chunks_exact(base_field_size)
                     .map(F::BasePrimeField::from_be_bytes_mod_order),
             )
-            .expect("Could not convert");
+            .expect("Could not convert bytes to field element");
         }
+        
         Ok(self)
     }
 }

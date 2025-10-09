@@ -1,6 +1,3 @@
-// src/codecs/arkworks_algebra/wrapper.rs
-// Extension traits for ergonomic high-level API
-
 use ark_ec::CurveGroup;
 use ark_ff::Field;
 use rand::{CryptoRng, RngCore};

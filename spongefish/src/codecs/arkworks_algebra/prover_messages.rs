@@ -1,12 +1,11 @@
-// prover_messages.rs - FIXED: Remove double wrapping
-
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, Fp, FpConfig,PrimeField};
 use rand::{CryptoRng, RngCore};
 use super::{CommonFieldToUnit, CommonGroupToUnit, FieldToUnitSerialize, GroupToUnitSerialize,UnitToBytes,UnitToField};
 use crate::codecs::bytes_uniform_modp;
+use crate::pattern::Length;
 use crate::{
-    pattern::{Label, Kind, PatternError}, 
+    pattern::{Label, Kind, PatternError,Pattern}, 
     BytesToUnitSerialize, CommonUnitToBytes, DuplexSpongeInterface, ProverState, UnitTranscript
 };
 
@@ -294,32 +293,30 @@ where
 }
 
 
-impl<F, H, R> UnitToField<F> for ProverState<H, u8, R>
+impl<F, H, R> UnitToField<F> for ProverState<H, u8, R> 
 where
     F: Field,
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
     fn fill_challenge_scalars(&mut self, label: Label, output: &mut [F]) -> Result<&mut Self, PatternError> {
-        use crate::pattern::{Pattern, Length};
-        
         let base_field_size = bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
-        let total_bytes = output.len() * F::extension_degree() as usize * base_field_size;
+        let ext_degree = F::extension_degree() as usize;
+        let element_size = ext_degree * base_field_size;
+        let total_bytes = output.len() * element_size;
         let mut buf = vec![0u8; total_bytes];
 
-        Pattern::begin_challenge::<F>(self, label, Length::Fixed(output.len()))?;
-        self.squeeze_challenge_bytes_nested(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
-        Pattern::end_challenge::<F>(self, label, Length::Fixed(output.len()))?;
+        self.pattern.begin_challenge::<F>(label, Length::Fixed(output.len()))?;
+        self.fill_challenge_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
+        self.pattern.end_challenge::<F>(label, Length::Fixed(output.len()))?;
 
-        // Convert bytes to field elements
-        for (i, o) in output.iter_mut().enumerate() {
-            let start = i * F::extension_degree() as usize * base_field_size;
-            let end = start + F::extension_degree() as usize * base_field_size;
-            *o = F::from_base_prime_field_elems(
-                buf[start..end].chunks(base_field_size)
+        // Convert bytes to field elements by chunking the buffer
+        for (elem, chunk) in output.iter_mut().zip(buf.chunks_exact(element_size)) {
+            *elem = F::from_base_prime_field_elems(
+                chunk.chunks_exact(base_field_size)
                     .map(F::BasePrimeField::from_be_bytes_mod_order),
             )
-            .expect("Could not convert");
+            .expect("Could not convert bytes to field element");
         }
         
         Ok(self)

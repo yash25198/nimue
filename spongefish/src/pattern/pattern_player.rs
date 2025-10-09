@@ -60,6 +60,15 @@ impl PatternPlayer {
         let expected = self.pattern.interactions().get(self.position)
             .ok_or_else(|| PatternError::NoMoreExpected { got: interaction.clone() })?;
         
+        // Validate the interaction matches the expected one first
+        if expected != &interaction {
+            self.finalized = true;
+            return Err(PatternError::UnexpectedInteraction { 
+                expected: expected.clone(), 
+                got: interaction.clone() 
+            });
+        }
+        
         // Validate hierarchy tracking
         match interaction.hierarchy() {
             Hierarchy::Begin => {
@@ -85,14 +94,7 @@ impl PatternPlayer {
                 }
             }
             Hierarchy::Atomic => {
-                 // Validate the interaction matches the expected one
-                if expected != &interaction {
-                    self.finalized = true;
-                    return Err(PatternError::UnexpectedInteraction { 
-                        expected: expected.clone(), 
-                        got: interaction 
-                    });
-                }
+                 // Already validated above
             }
         }
         self.position += 1;
