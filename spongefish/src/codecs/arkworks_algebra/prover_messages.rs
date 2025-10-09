@@ -70,7 +70,7 @@ where
         }
 
         // This will handle: Begin Message "bytes" -> Atomic "units" -> End Message "bytes"
-        self.add_units(Label::BYTES, &serialized)?;
+        self.add_units(Label::SERIALIZED_GROUP, &serialized)?;
 
         // End the outer group message
         self.pattern.end_message::<G>(label, Length::Fixed(input.len()))?;
