@@ -92,26 +92,26 @@ mod tests {
     fn test_record_playback() {
         // Record a new pattern
         let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol::<()>(Label::custom("Example protocol")).expect("Failed to begin protocol");
+        pattern.begin_protocol(Label::custom("Example protocol")).expect("Failed to begin protocol");
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        pattern.end_protocol::<()>(Label::custom("Example protocol")).expect("Failed to end protocol");
+        pattern.end_protocol(Label::custom("Example protocol")).expect("Failed to end protocol");
         let pattern = pattern.finalize();
 
         // Play it back exactly
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.begin_protocol::<()>(Label::custom("Example protocol")).expect("Failed to begin protocol");
+        playback.begin_protocol(Label::custom("Example protocol")).expect("Failed to begin protocol");
         playback.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        playback.end_protocol::<()>(Label::custom("Example protocol")).expect("Failed to end protocol");
+        playback.end_protocol(Label::custom("Example protocol")).expect("Failed to end protocol");
         playback.finalize().expect("Failed to finalize");
     }
 
@@ -142,14 +142,14 @@ mod tests {
     )]
     fn panics_if_record_begin_end_mismatch() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol::<()>(Label::custom("Example protocol")).expect("Failed to begin protocol");
+        pattern.begin_protocol(Label::custom("Example protocol")).expect("Failed to begin protocol");
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        pattern.end_protocol::<()>(Label::custom("Invalid example protocol")).expect("Failed to end protocol");
+        pattern.end_protocol(Label::custom("Invalid example protocol")).expect("Failed to end protocol");
         let _pattern = pattern.finalize();
     }
     #[test]
@@ -158,7 +158,7 @@ mod tests {
     )]
     fn panics_if_record_unmatched_begin() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol::<()>(Label::custom("Example protocol")).expect("Failed to begin protocol");
+        pattern.begin_protocol(Label::custom("Example protocol")).expect("Failed to begin protocol");
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,

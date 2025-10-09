@@ -21,7 +21,7 @@ use spongefish::{
         },
         unit::Pattern as _,
     },
-    pattern::{InteractionPattern, Label, Pattern, PatternState},
+    pattern::{Label, Pattern, PatternState},
     DefaultHash, ProofError, ProofResult, ProverState, VerifierState,
 };
 

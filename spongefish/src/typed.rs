@@ -208,7 +208,7 @@ macro_rules! define_protocol {
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
             R: rand::RngCore + rand::CryptoRng,
         {
-            state.inner_mut().add_units(input);
+            state.inner_mut().add_units(Label::UNITS, input);
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);

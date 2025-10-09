@@ -307,14 +307,9 @@ impl<H: DuplexSpongeInterface<u8>> UnitToBytes for VerifierState<'_, H, u8> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
+mod test_utils {
     use std::{cell::RefCell, rc::Rc};
-    use crate::{
-        codecs::{bytes::Pattern as _, unit::Pattern},
-        pattern::PatternState,
-        ProverState,
-    };
+    use crate::duplex_sponge::DuplexSpongeInterface;
 
     #[derive(Default, Clone)]
     pub struct DummySponge {
@@ -364,6 +359,17 @@ mod tests {
             self
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        codecs::{bytes::Pattern as _, unit::Pattern},
+        pattern::PatternState,
+        prover::ProverState,
+    };
+    use test_utils::DummySponge;
 
     #[test]
     fn test_fill_next_units_with_message_kind() {

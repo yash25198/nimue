@@ -101,23 +101,18 @@ where
     fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
         self.begin_challenge::<u8>(label, Length::Fixed(size))?;
         let n = crate::codecs::random_bits_in_random_modp(Fp::<C, N>::MODULUS) / 8;
-        self.challenge_units(Label::UNITS, size.div_ceil(n));
+        self.challenge_units(Label::UNITS, size.div_ceil(n))?;
         self.end_challenge::<u8>(label, Length::Fixed(size))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ark_bls12_381::Fr;
     use ark_ff::{
         AdditiveGroup, Fp2, Fp2Config, Fp4, Fp4Config, Fp64, MontBackend, MontConfig,
     };
 
     use super::*;
-    use crate::{
-        pattern::Pattern,
-        DefaultHash,
-    };
 
     /// Configuration for the BabyBear field (modulus = 2^31 - 2^27 + 1, generator = 21).
     #[derive(MontConfig)]
@@ -201,14 +196,14 @@ mod tests {
 15     End Message serialized-group Fixed(32) u8
 16   End Message com Fixed(1) ark_ec::models::twisted_edwards::group::Projective<ark_curve25519::curves::Curve25519Config>
 17   Begin Challenge chal Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
-18     Begin Challenge base-field-coefficients-little-endian Fixed(47) u8
+18     Begin Challenge bytes Fixed(47) u8
 19       Atomic Challenge units Fixed(47) u8
-20     End Challenge base-field-coefficients-little-endian Fixed(47) u8
+20     End Challenge bytes Fixed(47) u8
 21   End Challenge chal Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
 22   Begin Message resp Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
-23     Begin Message base-field-coefficients-little-endian Fixed(32) u8
+23     Begin Message bytes Fixed(32) u8
 24       Atomic Message units Fixed(32) u8
-25     End Message base-field-coefficients-little-endian Fixed(32) u8
+25     End Message bytes Fixed(32) u8
 26   End Message resp Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
 27 End Protocol github.com/mmaker/spongefish None ()
 "#
