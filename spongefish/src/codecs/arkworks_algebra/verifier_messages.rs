@@ -10,9 +10,10 @@ use crate::{
     CommonUnitToBytes, DuplexSpongeInterface, UnitToBytes, UnitTranscript, VerifierState,
 };
 
-// Common implementations (no labels in public methods)
+// ============================================================================
+// VERIFIER IMPLEMENTATIONS FOR u8 (byte-based operations)
+// ============================================================================
 
-// Specific implementations for VerifierState with u8 unit type
 impl<G, H> CommonGroupToUnit<G> for VerifierState<'_, H, u8>
 where
     G: CurveGroup,
@@ -49,20 +50,28 @@ where
     }
 }
 
-// Specific implementation for VerifierState with u8 unit type
 impl<F, H> UnitToField<F> for VerifierState<'_, H, u8>
 where
     F: Field,
     H: DuplexSpongeInterface,
 {
     fn fill_challenge_scalars(&mut self, label: Label, output: &mut [F]) -> Result<&mut Self, PatternError> {
+        use crate::pattern::{Pattern, Length};
+        
         let base_field_size = bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
-        let mut buf = vec![0u8; F::extension_degree() as usize * base_field_size];
+        let total_bytes = output.len() * F::extension_degree() as usize * base_field_size;
+        let mut buf = vec![0u8; total_bytes];
 
-        for o in output.iter_mut() {
-            self.fill_challenge_bytes(label, &mut buf)?;
+        Pattern::begin_challenge::<F>(self, label, Length::Fixed(output.len()))?;
+        self.squeeze_challenge_bytes_nested(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
+        Pattern::end_challenge::<F>(self, label, Length::Fixed(output.len()))?;
+
+        // Convert bytes to field elements
+        for (i, o) in output.iter_mut().enumerate() {
+            let start = i * F::extension_degree() as usize * base_field_size;
+            let end = start + F::extension_degree() as usize * base_field_size;
             *o = F::from_base_prime_field_elems(
-                buf.chunks(base_field_size)
+                buf[start..end].chunks(base_field_size)
                     .map(F::BasePrimeField::from_be_bytes_mod_order),
             )
             .expect("Could not convert");
@@ -70,6 +79,11 @@ where
         Ok(self)
     }
 }
+
+
+// ============================================================================
+// VERIFIER IMPLEMENTATIONS FOR Fp<C, N> (field-native operations)
+// ============================================================================
 
 impl<H, C, const N: usize> UnitToField<Fp<C, N>> for VerifierState<'_, H, Fp<C, N>>
 where
@@ -99,17 +113,54 @@ where
     }
 }
 
-impl<H, C, const N: usize, G> CommonGroupToUnit<G> for VerifierState<'_, H, Fp<C, N>>
+// ============================================================================
+// SHORT WEIERSTRASS CURVE IMPLEMENTATION FOR Fp<C, N>
+// ============================================================================
+
+impl<P, H, C, const N: usize> CommonGroupToUnit<ark_ec::short_weierstrass::Projective<P>> 
+    for VerifierState<'_, H, Fp<C, N>>
 where
+    P: ark_ec::short_weierstrass::SWCurveConfig<BaseField = Fp<C, N>>,
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
-    G: CurveGroup<BaseField = Fp<C, N>>,
 {
     type Repr = ();
 
-    fn public_points(&mut self, label: Label, input: &[G]) -> Result<Self::Repr, PatternError> {
+    fn public_points(
+        &mut self, 
+        label: Label, 
+        input: &[ark_ec::short_weierstrass::Projective<P>]
+    ) -> Result<Self::Repr, PatternError> {
         for point in input {
-            let (x, y) = point.into_affine().xy().unwrap();
+            let affine = point.into_affine();
+            let (x, y) = affine.xy().unwrap();
+            self.public_units(label, &[x, y])?;
+        }
+        Ok(())
+    }
+}
+
+// ============================================================================
+// TWISTED EDWARDS CURVE IMPLEMENTATION FOR Fp<C, N>
+// ============================================================================
+
+impl<P, H, C, const N: usize> CommonGroupToUnit<ark_ec::twisted_edwards::Projective<P>> 
+    for VerifierState<'_, H, Fp<C, N>>
+where
+    P: ark_ec::twisted_edwards::TECurveConfig<BaseField = Fp<C, N>>,
+    C: FpConfig<N>,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+{
+    type Repr = ();
+
+    fn public_points(
+        &mut self, 
+        label: Label, 
+        input: &[ark_ec::twisted_edwards::Projective<P>]
+    ) -> Result<Self::Repr, PatternError> {
+        for point in input {
+            let affine = point.into_affine();
+            let (x, y) = affine.xy().unwrap();
             self.public_units(label, &[x, y])?;
         }
         Ok(())
@@ -124,30 +175,6 @@ where
     fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
         for &byte in input {
             self.public_units(label, &[Fp::from(byte)])?;
-        }
-        Ok(self)
-    }
-}
-
-impl<H, R, C, const N: usize> UnitToBytes for crate::ProverState<H, Fp<C, N>, R>
-where
-    C: FpConfig<N>,
-    H: DuplexSpongeInterface<Fp<C, N>>,
-    R: rand::CryptoRng + rand::RngCore,
-{
-    fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> Result<&mut Self, PatternError> {
-        if !output.is_empty() {
-            let len_good = usize::min(
-                crate::codecs::random_bytes_in_random_modp(Fp::<C, N>::MODULUS),
-                output.len(),
-            );
-            let mut tmp = [Fp::from(0); 1];
-            self.fill_challenge_units(label, &mut tmp)?;
-            let buf = tmp[0].into_bigint().to_bytes_le();
-            output[..len_good].copy_from_slice(&buf[..len_good]);
-
-            // recursively fill the rest of the buffer
-            self.fill_challenge_bytes(label, &mut output[len_good..])?;
         }
         Ok(self)
     }

@@ -127,6 +127,12 @@ mod deserialize;
 /// Prover's utilities for encoding into a transcript.
 mod prover_messages;
 
+mod ext;
+pub use ext::{
+    ProverFieldMessageExt, ProverGroupMessageExt,
+    VerifierFieldMessageExt, VerifierGroupMessageExt,
+};
+
 /// Tests for arkworks.
 // #[cfg(test)]
 // mod tests;

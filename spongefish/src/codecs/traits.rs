@@ -28,7 +28,7 @@ macro_rules! field_traits {
 
         /// Add field elements to the protocol transcript.
         pub trait FieldToUnitSerialize<F: $Field>: CommonFieldToUnit<F> {
-            fn add_scalars(&mut self, label: $crate::pattern::Label, input: &[F]) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn add_scalars(&mut self, label: $crate::pattern::Label,kind : crate::pattern::Kind, input: &[F]) -> Result<&mut Self, $crate::pattern::PatternError>;
         }
 
         /// Deserialize field elements from the protocol transcript.
@@ -56,7 +56,7 @@ macro_rules! group_traits {
 
         /// Adds a new prover message consisting of an EC element.
         pub trait GroupToUnitSerialize<G: $Group>: CommonGroupToUnit<G> {
-            fn add_points(&mut self, label: $crate::pattern::Label, input: &[G]) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn add_points(&mut self, label: $crate::pattern::Label,kind : crate::pattern::Kind, input: &[G]) -> Result<&mut Self, $crate::pattern::PatternError>;
         }
 
         /// Receive (and deserialize) group elements from the domain separator.

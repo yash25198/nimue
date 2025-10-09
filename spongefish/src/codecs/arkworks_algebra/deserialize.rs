@@ -1,135 +1,182 @@
+// deserialize.rs - FIXED: Remove double wrapping + proper curve reconstruction
+
 use ark_ec::{
-    short_weierstrass::{Affine as SWAffine, Projective as SWCurve, SWCurveConfig},
-    twisted_edwards::{Affine as EdwardsAffine, Projective as EdwardsCurve, TECurveConfig},
+    short_weierstrass::{Affine as SWAffine, SWCurveConfig},
+    twisted_edwards::{Affine as TEAffine, TECurveConfig},
     CurveGroup,
 };
-use ark_ff::{Field, Fp, FpConfig};
-use ark_ff::PrimeField;
-use ark_serialize::CanonicalSerialize;
+use ark_ff::{Field, Fp, FpConfig, PrimeField};
+use ark_serialize::CanonicalDeserialize;
+use crate::traits::BytesToUnitDeserialize;
+use crate::pattern::PatternError;
 
 use super::{FieldToUnitDeserialize, GroupToUnitDeserialize};
 use crate::{
-    codecs::bytes_modp, pattern::{Hierarchy, Interaction, Kind, Label, Length, Pattern as _}, DuplexSpongeInterface, ProofResult, Unit, VerifierState
+    codecs::bytes_modp, 
+    pattern::Label, 
+    DuplexSpongeInterface, 
+    ProofResult, 
+    VerifierState
 };
 
-impl<F, H> FieldToUnitDeserialize<F> for VerifierState<'_, H>
+// ============================================================================
+// VERIFIER IMPLEMENTATIONS FOR u8 (byte-based operations)
+// ============================================================================
+
+impl<F, H> FieldToUnitDeserialize<F> for VerifierState<'_, H, u8>
 where
     F: Field,
     H: DuplexSpongeInterface,
 {
     fn fill_next_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
-        // Begin the outer field message
-        self.pattern.begin_message::<F>(label, Length::Fixed(output.len()))?;
+        // NO begin/end here - pattern trait handles that
+        // Just do the inner atomic operation
         
-        // Begin the inner bytes layer
+        // Calculate buffer size for each scalar
         let scalar_bytes = bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
-        let total_bytes = output.len() * scalar_bytes;
-        self.pattern.begin_message::<u8>(Label::BYTES, Length::Fixed(total_bytes))?;
+        let mut buf = vec![0u8; scalar_bytes];
         
-        // Process the atomic interaction
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            Label::UNITS,
-            Length::Fixed(total_bytes),
-        ))?;
-
-        let point_size = F::default().compressed_size();
-        let mut buf = vec![0u8; point_size];
+        // Read and deserialize each scalar from bytes
         for o in output.iter_mut() {
-            u8::read(&mut self.narg_string, &mut buf)?;
-            *o = F::deserialize_compressed(buf.as_slice())?;
-            self.duplex_sponge.absorb_unchecked(&buf);
+            // Fill bytes directly - this matches the pattern's inner message_bytes call
+            self.fill_next_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
+            *o = F::deserialize_compressed(buf.as_slice())
+                .map_err(|_| PatternError::DeserializationError)?;
         }
-        
-        // End the inner bytes layer
-        self.pattern.end_message::<u8>(Label::BYTES, Length::Fixed(total_bytes))?;
-        
-        // End the outer field message
-        self.pattern.end_message::<F>(label, Length::Fixed(output.len()))?;
         
         Ok(self)
     }
 }
 
-impl<G, H> GroupToUnitDeserialize<G> for VerifierState<'_, H>
+impl<G, H> GroupToUnitDeserialize<G> for VerifierState<'_, H, u8>
 where
     G: CurveGroup,
     H: DuplexSpongeInterface,
 {
     fn fill_next_points(&mut self, label: Label, output: &mut [G]) -> ProofResult<&mut Self> {
-        // Begin the outer group message
-        self.pattern.begin_message::<G>(label, Length::Fixed(output.len()))?;
+        // NO begin/end here - pattern trait handles that
+        // Just do the inner atomic operation
         
-        // Begin the inner bytes layer
+        // Calculate buffer size for each point
         let point_size = G::default().compressed_size();
-        let total_bytes = output.len() * point_size;
-        self.pattern.begin_message::<u8>(Label::SERIALIZED_GROUP, Length::Fixed(total_bytes))?;
-        
-        // Process the atomic interaction
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            Label::UNITS,
-            Length::Fixed(total_bytes),
-        ))?;
-
         let mut buf = vec![0u8; point_size];
+        
+        // Read and deserialize each point from bytes
         for o in output.iter_mut() {
-            u8::read(&mut self.narg_string, &mut buf)?;
-            *o = G::deserialize_compressed(buf.as_slice())?;
-            self.duplex_sponge.absorb_unchecked(&buf);
+            // Fill bytes directly - this matches the pattern's inner message_bytes call
+            self.fill_next_bytes(Label::SERIALIZED_GROUP, &mut buf)?;
+            *o = G::deserialize_compressed(buf.as_slice())
+                .map_err(|_| PatternError::DeserializationError)?;
         }
         
-        // End the inner bytes layer
-        self.pattern.end_message::<u8>(Label::SERIALIZED_GROUP, Length::Fixed(total_bytes))?;
-        
-        // End the outer group message
-        self.pattern.end_message::<G>(label, Length::Fixed(output.len()))?;
-        
         Ok(self)
     }
 }
 
-impl<H, C, const N: usize> FieldToUnitDeserialize<Fp<C, N>> for VerifierState<'_, H, Fp<C, N>>
+// ============================================================================
+// VERIFIER IMPLEMENTATIONS FOR Fp<C, N> (field-native operations)
+// ============================================================================
+
+impl<F, H, C, const N: usize> FieldToUnitDeserialize<F> for VerifierState<'_, H, Fp<C, N>>
 where
+    F: Field<BasePrimeField = Fp<C, N>>,
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn fill_next_scalars(&mut self, label: Label, output: &mut [Fp<C, N>]) -> ProofResult<&mut Self> {
-        // Begin the outer field message
-        self.pattern.begin_message::<Fp<C, N>>(label, Length::Fixed(output.len()))?;
+    fn fill_next_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
+        // NO begin/end here - pattern trait handles that
+        // Just do the inner atomic operation
         
-        // Use fill_next_units which now handles the inner hierarchy correctly
-        self.fill_next_units(Label::BASE_FIELD_COEFFICIENTS, Kind::Message, output)?;
+        // Calculate number of base field elements needed
+        let extension_degree = F::extension_degree() as usize;
+        let mut flattened = vec![Fp::<C, N>::default(); output.len() * extension_degree];
         
-        // End the outer field message
-        self.pattern.end_message::<Fp<C, N>>(label, Length::Fixed(output.len()))?;
+        // Read base field coefficients directly - matches pattern's inner message_units call
+        self.fill_next_units(Label::BASE_FIELD_COEFFICIENTS, &mut flattened)?;
+        
+        // Convert base field elements back to extension field
+        for (i, o) in output.iter_mut().enumerate() {
+            let start = i * extension_degree;
+            let end = start + extension_degree;
+            *o = F::from_base_prime_field_elems(flattened[start..end].iter().copied())
+                .expect("Could not convert from base field elements");
+        }
         
         Ok(self)
     }
 }
 
-impl<P, H, C, const N: usize> GroupToUnitDeserialize<EdwardsCurve<P>>
+// ============================================================================
+// SHORT WEIERSTRASS CURVE IMPLEMENTATION
+// ============================================================================
+
+impl<P, H, C, const N: usize> GroupToUnitDeserialize<ark_ec::short_weierstrass::Projective<P>> 
     for VerifierState<'_, H, Fp<C, N>>
 where
-    C: FpConfig<N>,
+    P: SWCurveConfig<BaseField = Fp<C, N>>,
     H: DuplexSpongeInterface<Fp<C, N>>,
-    P: TECurveConfig<BaseField = Fp<C, N>>,
+    C: FpConfig<N>,
 {
-    fn fill_next_points(&mut self, label: Label, output: &mut [EdwardsCurve<P>]) -> ProofResult<&mut Self> {
-        self.fill_next_curve_points::<EdwardsCurve<P>, EdwardsAffine<P>>(label, output)
+    fn fill_next_points(
+        &mut self, 
+        label: Label, 
+        output: &mut [ark_ec::short_weierstrass::Projective<P>]
+    ) -> ProofResult<&mut Self> {
+        // NO begin/end here - pattern trait handles that
+        // Just do the inner atomic operation
+        
+        // Read all coordinates (2 per point: x and y) directly
+        let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
+        self.fill_next_units(Label::COORDINATES, &mut coords)?;
+        
+        // Convert coordinate pairs to points using Short Weierstrass constructor
+        for (i, o) in output.iter_mut().enumerate() {
+            let x = coords[i * 2];
+            let y = coords[i * 2 + 1];
+            
+            // Create affine point using Short Weierstrass new_unchecked
+            let affine = SWAffine::<P>::new_unchecked(x, y);
+            *o = affine.into();
+        }
+        
+        Ok(self)
     }
 }
 
-impl<P, H, C, const N: usize> GroupToUnitDeserialize<SWCurve<P>> for VerifierState<'_, H, Fp<C, N>>
+// ============================================================================
+// TWISTED EDWARDS CURVE IMPLEMENTATION
+// ============================================================================
+
+impl<P, H, C, const N: usize> GroupToUnitDeserialize<ark_ec::twisted_edwards::Projective<P>> 
+    for VerifierState<'_, H, Fp<C, N>>
 where
-    C: FpConfig<N>,
+    P: TECurveConfig<BaseField = Fp<C, N>>,
     H: DuplexSpongeInterface<Fp<C, N>>,
-    P: SWCurveConfig<BaseField = Fp<C, N>>,
+    C: FpConfig<N>,
 {
-    fn fill_next_points(&mut self, label: Label, output: &mut [SWCurve<P>]) -> ProofResult<&mut Self> {
-        self.fill_next_curve_points::<SWCurve<P>, SWAffine<P>>(label, output)
+    fn fill_next_points(
+        &mut self, 
+        label: Label, 
+        output: &mut [ark_ec::twisted_edwards::Projective<P>]
+    ) -> ProofResult<&mut Self> {
+        // NO begin/end here - pattern trait handles that
+        // Just do the inner atomic operation
+        
+        // Read all coordinates (2 per point: x and y) directly
+        let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
+        self.fill_next_units(Label::COORDINATES, &mut coords)?;
+        
+        // Convert coordinate pairs to points using Twisted Edwards constructor
+        for (i, o) in output.iter_mut().enumerate() {
+            let x = coords[i * 2];
+            let y = coords[i * 2 + 1];
+            
+            // Create affine point using Twisted Edwards new_unchecked
+            let affine = TEAffine::<P>::new_unchecked(x, y);
+            *o = affine.into();
+        }
+        
+        Ok(self)
     }
 }
 #[cfg(test)]
