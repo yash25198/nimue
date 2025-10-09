@@ -121,14 +121,10 @@ where
 
      /// Add units with a label to the transcript
      pub fn add_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
-        // Use proper begin_message to match the pattern
-        self.pattern.begin_message::<U>(label, Length::Fixed(input.len()))?;
-
-        // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::UNITS,
+            label,
             Length::Fixed(input.len()),
         ))?;
 
@@ -137,9 +133,6 @@ where
         U::write(input, &mut self.narg_string)
             .map_err(|_| PatternError::AlreadyFinalized)?;
         self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
-
-        // Use proper end_message to match the pattern
-        self.pattern.end_message::<U>(label, Length::Fixed(input.len()))?;
         
         Ok(self)
     }
@@ -309,7 +302,11 @@ where
     R: RngCore + CryptoRng,
 {
     fn add_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
-        self.add_units(label, input)
+        self.pattern.begin_message::<u8>(Label::BYTES, Length::Fixed(input.len()))?;
+        self.add_units(label, input)?;
+        self.pattern.end_message::<u8>(Label::BYTES, Length::Fixed(input.len()))?;
+        Ok(self)
+
     }
 }
 
@@ -337,7 +334,7 @@ mod tests {
     use super::*;
     use crate::{
         codecs::{bytes::Pattern as _, unit::Pattern as _},
-        pattern::PatternState,
+        pattern::{Pattern as PatternTrait, PatternState},
     };
 
     #[test]
@@ -348,7 +345,7 @@ mod tests {
 
         let mut pstate: ProverState = ProverState::from(&pattern);
 
-        pstate.add_bytes(&[1, 2, 3, 4]).expect("Failed to add bytes");
+        pstate.add_bytes(Label::BYTES, &[1, 2, 3, 4]).expect("Failed to add bytes");
 
         let mut buf = [0u8; 8];
         pstate.rng().fill_bytes(&mut buf);
@@ -363,7 +360,7 @@ mod tests {
         let pattern = pattern.finalize();
         let mut pstate: ProverState = ProverState::from(&pattern);
 
-        pstate.public_units(&[1, 2, 3, 4]);
+        pstate.public_units(Label::custom("public_units"), &[1, 2, 3, 4]);
         assert_eq!(pstate.narg_string(), b"");
         let _proof = pstate.finalize().expect("Failed to finalize");
     }
@@ -395,7 +392,7 @@ mod tests {
 
         let input = [42, 43, 44];
 
-        pstate.add_units(&input).expect("Failed to add units");
+        pstate.add_units(Label::UNITS, &input).expect("Failed to add units");
         let proof = pstate.finalize().expect("Failed to finalize");
         assert_eq!(proof, &input);
     }
@@ -410,7 +407,7 @@ mod tests {
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
-        pstate.add_units(&[1, 2, 3]).expect("Failed to add units");
+        pstate.add_units(Label::UNITS, &[1, 2, 3]).expect("Failed to add units");
     }
 
     #[test]
@@ -441,12 +438,14 @@ mod tests {
     #[test]
     fn test_fill_challenge_units() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.challenge_units(Label::custom("fill_challenge_units"), 8);
+        pattern.begin_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8)).expect("Failed to begin challenge");
+        let _ = pattern.challenge_units(Label::UNITS, 8);
+        pattern.end_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8)).expect("Failed to end challenge");
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         let mut out = [0u8; 8];
-        pstate.fill_challenge_units(&mut out);
+        pstate.fill_challenge_units(Label::custom("fill_challenge_units"), &mut out).expect("Failed to fill challenge units");
         assert_eq!(out, [62, 110, 82, 217, 159, 135, 60, 9]);
         let _proof = pstate.finalize().expect("Failed to finalize");
     }
@@ -464,7 +463,7 @@ mod tests {
         let mut b = [0u8; 16];
 
         p1.rng().fill_bytes(&mut a);
-        p2.add_bytes(&[1, 2, 3]).expect("Failed to add bytes");
+        p2.add_bytes(Label::BYTES, &[1, 2, 3]).expect("Failed to add bytes");
         p2.rng().fill_bytes(&mut b);
 
         assert_ne!(a, b);
@@ -475,13 +474,13 @@ mod tests {
     #[test]
     fn test_add_units_multiple_accumulates() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::UNITS, 2);
-        pattern.message_units(Label::UNITS, 3);
+        let _ = pattern.message_units(Label::UNITS, 2);
+        let _ = pattern.message_units(Label::UNITS, 3);
         let pattern = pattern.finalize();
 
         let mut p: ProverState = ProverState::from(&pattern);
-        p.add_units(&[10, 11]).expect("Failed to add units");
-        p.add_units(&[20, 21, 22]).expect("Failed to add units");
+        p.add_units(Label::UNITS, &[10, 11]).expect("Failed to add units");
+        p.add_units(Label::UNITS, &[20, 21, 22]).expect("Failed to add units");
         assert_eq!(p.finalize().expect("Failed to finalize"), &[10, 11, 20, 21, 22]);
     }
 
@@ -493,19 +492,19 @@ mod tests {
 
         let mut p: ProverState = ProverState::from(&pattern);
         let msg = b"zkp42";
-        p.add_units(msg).expect("Failed to add units");
+        p.add_units(Label::UNITS, msg).expect("Failed to add units");
         assert_eq!(p.finalize().expect("Failed to finalize"), msg);
     }
 
     #[test]
     fn test_hint_bytes_appends_hint_length_and_data() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
+        let _ = pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize();
 
         let mut prover: ProverState = ProverState::from(&pattern);
         let hint = b"abc123";
-        prover.hint_bytes(hint).expect("Failed to add hint bytes");
+        prover.hint_bytes(Label::custom("hint_bytes"), hint).expect("Failed to add hint bytes");
         let expected = [6, 0, 0, 0, b'a', b'b', b'c', b'1', b'2', b'3'];
         assert_eq!(prover.finalize().expect("Failed to finalize"), &expected);
     }
@@ -513,11 +512,11 @@ mod tests {
     #[test]
     fn test_hint_bytes_empty_hint_is_encoded_correctly() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
+        let _ = pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize();
 
         let mut prover: ProverState = ProverState::from(&pattern);
-        prover.hint_bytes(b"").expect("Failed to add hint bytes");
+        let _ = prover.hint_bytes(Label::custom("hint_bytes"), b"");
         assert_eq!(prover.finalize().expect("Failed to finalize"), &[0, 0, 0, 0]);
     }
 
@@ -530,7 +529,7 @@ mod tests {
 
         let mut prover: ProverState = ProverState::from(&pattern);
         // indicate a hint without a matching hint_bytes interaction
-        prover.hint_bytes(b"some_hint").expect("Failed to add hint bytes");
+        prover.hint_bytes(Label::custom("hint_bytes"), b"some_hint").expect("Failed to add hint bytes");
     }
 
     #[test]
@@ -543,8 +542,8 @@ mod tests {
         let mut prover1: ProverState = ProverState::from(&pattern);
         let mut prover2: ProverState = ProverState::from(&pattern);
 
-        prover1.hint_bytes(hint).expect("Failed to add hint bytes");
-        prover2.hint_bytes(hint).expect("Failed to add hint bytes");
+        prover1.hint_bytes(Label::custom("hint_bytes"), hint).expect("Failed to add hint bytes");
+        prover2.hint_bytes(Label::custom("hint_bytes"), hint).expect("Failed to add hint bytes");
 
         assert_eq!(
             prover1.narg_string(),

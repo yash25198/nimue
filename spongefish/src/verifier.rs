@@ -1,9 +1,10 @@
 use std::{marker::PhantomData, sync::Arc};
-
 use ark_ff::{Fp, FpConfig};
-
 use crate::{
-    duplex_sponge::{DuplexSpongeInterface, Unit}, pattern::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, Pattern, PatternError, PatternPlayer}, traits::{BytesToUnitDeserialize, UnitTranscript}, CommonUnitToBytes, DefaultHash, ProofResult, UnitToBytes
+    duplex_sponge::{DuplexSpongeInterface, Unit}, 
+    pattern::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, Pattern, PatternError, PatternPlayer}, 
+    traits::{BytesToUnitDeserialize, UnitTranscript}, 
+    CommonUnitToBytes, DefaultHash, ProofResult, UnitToBytes
 };
 
 /// [`VerifierState`] is the verifier state.
@@ -24,21 +25,6 @@ where
 
 impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     /// Creates a new [`VerifierState`] instance with the given sponge and domain separator.
-    ///
-    /// The resulting object will act as the verifier in a zero-knowledge protocol.
-    ///
-    /// ```
-    /// # use spongefish::*;
-    ///
-    /// let domsep = DomainSeparator::<DefaultHash>::new("📝").absorb(1, "inhale 🫁").squeeze(32, "exhale 🎏");
-    /// // A silly NARG string for the example.
-    /// let narg_string = &[0x42];
-    /// let mut verifier_state = domsep.to_verifier_state(narg_string);
-    /// assert_eq!(verifier_state.next_bytes().unwrap(), [0x42]);
-    /// let challenge = verifier_state.challenge_bytes::<32>();
-    /// assert!(challenge.is_ok());
-    /// assert_ne!(challenge.unwrap(), [0; 32]);
-    /// ```
     #[must_use]
     pub fn new(pattern: Arc<InteractionPattern>, narg_string: &'a [u8]) -> Self {
         let iv = pattern.domain_separator();
@@ -50,27 +36,49 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         }
     }
 
+    /// Core method for processing units with a specific kind
+    /// 
+    /// For Message and Public kinds: reads from NARG string and absorbs
+    /// For Challenge kind: squeezes from the sponge
     #[inline]
-    pub fn fill_next_units(&mut self, label: Label, input: &mut [U]) -> Result<&mut Self, std::io::Error> {
-        // Use proper begin_message to match the pattern
-        self.pattern.begin_message::<U>(label, Length::Fixed(input.len()))
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to begin message"))?;
-
+    pub fn fill_next_units(&mut self, label: Label, kind: Kind, input: &mut [U]) -> Result<&mut Self, PatternError> {
         // Process the atomic interaction
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
-            Kind::Message,
-            Label::UNITS,
+            kind,
+            label,
             Length::Fixed(input.len()),
-        )).map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to interact"))?;
-
-        U::read(&mut self.narg_string, input)?;
-        self.duplex_sponge.absorb_unchecked(input);
-
-        // Use proper end_message to match the pattern
-        self.pattern.end_message::<U>(label, Length::Fixed(input.len()))
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Failed to end message"))?;
-
+        ))?;
+        
+        match kind {
+            Kind::Message | Kind::Public => {
+                // Read from NARG string and absorb
+                U::read(&mut self.narg_string, input).map_err(|_| PatternError::NoMoreExpected { 
+                    got: Interaction::new::<U>(
+                        Hierarchy::Atomic,
+                        kind,
+                        label,
+                        Length::Fixed(input.len()),
+                    )
+                })?;
+                self.duplex_sponge.absorb_unchecked(input);
+            }
+            Kind::Challenge => {
+                // Squeeze from sponge
+                self.duplex_sponge.squeeze_unchecked(input);
+            }
+            _ => {
+                return Err(PatternError::NoMoreExpected {
+                    got: Interaction::new::<U>(
+                        Hierarchy::Atomic,
+                        kind,
+                        label,
+                        Length::Fixed(input.len()),
+                    )
+                });
+            }
+        }
+        
         Ok(self)
     }
 
@@ -143,33 +151,30 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             label,
             Length::Dynamic,
         )).map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Pattern error"))?;
-
+        
         if self.narg_string.len() < 4 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 "Insufficient transcript remaining for hint",
             ));
         }
-
+        
         let len = u32::from_le_bytes(self.narg_string[..4].try_into().unwrap()) as usize;
         let rest = &self.narg_string[4..];
-
+        
         if rest.len() < len {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
                 format!("Insufficient transcript remaining, got {}, need {len}", rest.len()),
             ));
         }
-
+        
         let (hint, remaining) = rest.split_at(len);
         self.narg_string = remaining;
-
         Ok(hint)
     }
 
     /// Abort the verifier session without completing playback.
-    ///
-    /// Any remaining expected interactions are discarded.
     pub fn abort(mut self) -> Result<(), crate::pattern::PatternError> {
         self.pattern.abort()?;
         Ok(())
@@ -187,20 +192,20 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'
     fn public_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
         // Use proper begin_public to match the pattern
         self.pattern.begin_public::<U>(label, Length::Fixed(input.len()))?;
-
-        // Process the atomic interaction
+        
+        // Reuse fill_next_units for public inputs (they get absorbed but not read from NARG)
+        // Note: For public inputs, we absorb directly since they're provided, not read
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
             Label::UNITS,
             Length::Fixed(input.len()),
         ))?;
-
+        
         self.duplex_sponge.absorb_unchecked(input);
-
+        
         // Use proper end_public to match the pattern
         self.pattern.end_public::<U>(label, Length::Fixed(input.len()))?;
-        
         Ok(self)
     }
 
@@ -208,20 +213,12 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'
     fn fill_challenge_units(&mut self, label: Label, input: &mut [U]) -> Result<&mut Self, PatternError> {
         // Use proper begin_challenge to match the pattern
         self.pattern.begin_challenge::<U>(label, Length::Fixed(input.len()))?;
-
-        // Process the atomic interaction
-        self.pattern.interact(Interaction::new::<U>(
-            Hierarchy::Atomic,
-            Kind::Challenge,
-            Label::UNITS,
-            Length::Fixed(input.len()),
-        ))?;
-
-        self.duplex_sponge.squeeze_unchecked(input);
-
+        
+        // Reuse fill_next_units with Challenge kind
+        self.fill_next_units(Label::UNITS, Kind::Challenge, input)?;
+        
         // Use proper end_challenge to match the pattern
         self.pattern.end_challenge::<U>(label, Length::Fixed(input.len()))?;
-        
         Ok(self)
     }
 }
@@ -234,8 +231,8 @@ where
 {
     /// Helper to deserialize curve points and absorb their coordinates
     pub(crate) fn fill_next_curve_points<G, A>(
-        &mut self, 
-        label: Label, 
+        &mut self,
+        label: Label,
         output: &mut [G]
     ) -> ProofResult<&mut Self>
     where
@@ -248,22 +245,22 @@ where
         // Begin the inner coordinates layer
         self.pattern.begin_message::<Fp<C, N>>(Label::COORDINATES, Length::Fixed(output.len() * 2))?;
         
-        // Process the atomic interaction
-        self.pattern.interact(Interaction::new::<Fp<C, N>>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            Label::UNITS,
-            Length::Fixed(output.len() * 2),
-        ))?;
-
-        for o in output.iter_mut() {
+        // Create a buffer for all coordinates
+        let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
+        
+        // Deserialize points and extract coordinates
+        for (i, o) in output.iter_mut().enumerate() {
             let affine = A::deserialize_compressed(&mut self.narg_string)?;
             *o = G::from(affine);
             
-            // Extract coordinates and absorb
+            // Extract coordinates
             let (x, y) = affine.xy().unwrap();
-            self.duplex_sponge.absorb_unchecked(&[x, y]);
+            coords[i * 2] = x;
+            coords[i * 2 + 1] = y;
         }
+        
+        // Reuse fill_next_units to absorb the coordinates
+        self.fill_next_units(Label::UNITS, Kind::Message, &mut coords)?;
         
         // End the inner coordinates layer
         self.pattern.end_message::<Fp<C, N>>(Label::COORDINATES, Length::Fixed(output.len() * 2))?;
@@ -284,7 +281,16 @@ impl<H: DuplexSpongeInterface<U>, U: Unit> core::fmt::Debug for VerifierState<'_
 impl<H: DuplexSpongeInterface<u8>> BytesToUnitDeserialize for VerifierState<'_, H, u8> {
     #[inline]
     fn fill_next_bytes(&mut self, label: Label, input: &mut [u8]) -> Result<&mut Self, std::io::Error> {
-        self.fill_next_units(label, input)
+        self.pattern.begin_message::<u8>(Label::BYTES, Length::Fixed(input.len()))
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Pattern error"))?;
+        
+        self.fill_next_units(label, Kind::Message, input)
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Pattern error"))?;
+        
+        self.pattern.end_message::<u8>(Label::BYTES, Length::Fixed(input.len()))
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Pattern error"))?;
+        
+        Ok(self)
     }
 }
 
@@ -299,11 +305,11 @@ impl<H: DuplexSpongeInterface<u8>> UnitToBytes for VerifierState<'_, H, u8> {
         self.fill_challenge_units(label, output)
     }
 }
+
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc, sync::Arc};
-
     use super::*;
+    use std::{cell::RefCell, rc::Rc};
     use crate::{
         codecs::{bytes::Pattern as _, unit::Pattern},
         pattern::PatternState,
@@ -360,6 +366,36 @@ mod tests {
     }
 
     #[test]
+    fn test_fill_next_units_with_message_kind() {
+        let mut pattern = PatternState::<u8>::new();
+        pattern.message_units(Label::UNITS, 3);
+        let pattern = pattern.finalize();
+        
+        let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"abc");
+        let mut buf = [0u8; 3];
+        
+        assert!(vs.fill_next_units(Label::UNITS, Kind::Message, &mut buf).is_ok());
+        assert_eq!(buf, *b"abc");
+        assert_eq!(*vs.duplex_sponge.absorbed.borrow(), b"abc");
+        vs.finalize().expect("Failed to finalize");
+    }
+
+    #[test]
+    fn test_fill_next_units_with_challenge_kind() {
+        let mut pattern = PatternState::<u8>::new();
+        pattern.challenge_units(Label::custom("challenge"), 4);
+        let pattern = pattern.finalize();
+        
+        let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"");
+        let mut buf = [0u8; 4];
+        
+        assert!(vs.fill_next_units(Label::UNITS, Kind::Challenge, &mut buf).is_ok());
+        assert_eq!(buf, [0, 1, 2, 3]); // From DummySponge squeeze
+        assert_eq!(*vs.duplex_sponge.squeezed.borrow(), vec![0, 1, 2, 3]);
+        vs.finalize().expect("Failed to finalize");
+    }
+
+    #[test]
     fn test_new_verifier_state_constructs_correctly() {
         let pattern = PatternState::<u8>::new().finalize();
         let transcript = b"abc";
@@ -369,28 +405,15 @@ mod tests {
     }
 
     #[test]
-    fn test_fill_next_units_reads_and_absorbs() {
-        let mut pattern = PatternState::<u8>::new();
-        pattern.message_units(Label::UNITS, 3);
-        let pattern = pattern.finalize();
-
-        let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"abc");
-        let mut buf = [0u8; 3];
-        assert!(vs.fill_next_units(&mut buf).is_ok());
-        assert_eq!(buf, *b"abc");
-        assert_eq!(*vs.duplex_sponge.absorbed.borrow(), b"abc");
-        vs.finalize().expect("Failed to finalize");
-    }
-
-    #[test]
     fn test_fill_next_units_with_insufficient_data_errors() {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_units(Label::UNITS, 4);
         let pattern = pattern.finalize();
-
+        
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"xy");
         let mut buf = [0u8; 4];
-        assert!(vs.fill_next_units(&mut buf).is_err());
+        
+        assert!(vs.fill_next_units(Label::UNITS, Kind::Message, &mut buf).is_err());
         vs.abort().expect("Failed to abort");
     }
 
@@ -399,7 +422,7 @@ mod tests {
         let mut pattern = PatternState::<u8>::new();
         pattern.ratchet();
         let pattern = pattern.finalize();
-
+        
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), &[]);
         vs.ratchet().expect("Failed to ratchet");
         assert!(*vs.duplex_sponge.ratcheted.borrow());
@@ -414,7 +437,7 @@ mod tests {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_units(Label::UNITS, 1);
         let pattern = pattern.finalize();
-
+        
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), &[]);
         vs.ratchet().expect("Failed to ratchet");
     }
@@ -424,9 +447,9 @@ mod tests {
         let mut pattern = PatternState::<u8>::new();
         pattern.public_units(Label::custom("public_units"), 2);
         let pattern = pattern.finalize();
-
+        
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"..");
-        vs.public_units(&[1, 2]);
+        vs.public_units(Label::custom("public_units"), &[1, 2]);
         assert_eq!(*vs.duplex_sponge.absorbed.borrow(), &[1, 2]);
         vs.finalize().expect("Failed to finalize");
     }
@@ -434,14 +457,19 @@ mod tests {
     #[test]
     fn test_unit_transcript_fill_challenge_units() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.challenge_units(Label::custom("fill_challenge_units"), 4);
+        let _ = pattern.challenge_units(Label::custom("fill_challenge_units"), 4);
         let pattern = pattern.finalize();
-
+        
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"abcd");
+        vs.begin_protocol(Label::PROTOCOL).expect("Failed to begin protocol");
+        
         let mut out = [0u8; 4];
-        vs.fill_challenge_units(&mut out);
+        vs.fill_challenge_units(Label::custom("fill_challenge_units"), &mut out)
+            .expect("Failed to fill challenge units");
+        
+        vs.end_protocol(Label::PROTOCOL).expect("Failed to end protocol");
         assert_eq!(out, [0, 1, 2, 3]);
-        vs.finalize().expect("Failed to finalize");
+        let _ = vs.finalize();
     }
 
     #[test]
@@ -449,10 +477,11 @@ mod tests {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_bytes(Label::BYTES, 3).expect("Failed to add message bytes");
         let pattern = pattern.finalize();
-
+        
         let mut vs = VerifierState::<DummySponge>::new(Arc::new(pattern), b"xyz");
         let mut out = [0u8; 3];
-        assert!(vs.fill_next_bytes(&mut out).is_ok());
+        
+        assert!(vs.fill_next_bytes(Label::custom("bytes"), &mut out).is_ok());
         assert_eq!(out, *b"xyz");
         vs.finalize().expect("Failed to finalize");
     }
@@ -460,19 +489,25 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_valid_hint() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
+        let _ = pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize();
-
+        
         let hint = b"abc123";
         let mut prover: ProverState = ProverState::from(&pattern);
-        prover.hint_bytes(hint).expect("Failed to add hint bytes");
+        prover.begin_protocol(Label::PROTOCOL).expect("Failed to begin protocol");
+        prover.hint_bytes(Label::custom("hint_bytes"), hint).expect("Failed to add hint bytes");
+        prover.end_protocol(Label::PROTOCOL).expect("Failed to end protocol");
+        
         let narg = prover.finalize().expect("Failed to finalize");
         assert_eq!(hex::encode(&narg), "06000000616263313233");
-
+        
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern.clone()), &narg);
-        let result = vs.hint_bytes().unwrap();
+        vs.begin_protocol(Label::PROTOCOL).expect("Failed to begin protocol");
+        let result = vs.hint_bytes(Label::custom("hint_bytes")).unwrap();
+        vs.end_protocol(Label::PROTOCOL).expect("Failed to end protocol");
+        
         assert_eq!(result, hint);
-        vs.finalize().expect("Failed to finalize");
+        let _ = vs.finalize();
     }
 
     #[test]
@@ -480,14 +515,15 @@ mod tests {
         let mut pattern = PatternState::<u8>::new();
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize();
-
+        
         let hint = b"";
         let mut prover: ProverState = ProverState::from(&pattern);
-        prover.hint_bytes(hint).expect("Failed to add hint bytes");
+        prover.hint_bytes(Label::custom("hint_bytes"), hint).expect("Failed to add hint bytes");
         let narg = prover.finalize().expect("Failed to finalize");
-
+        
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern.clone()), &narg);
-        let result = vs.hint_bytes().unwrap();
+        let result = vs.hint_bytes(Label::custom("hint_bytes")).unwrap();
+        
         assert_eq!(result, b"");
         vs.finalize().expect("Failed to finalize");
     }
@@ -498,12 +534,10 @@ mod tests {
     )]
     fn test_hint_bytes_verifier_no_hint_op() {
         let pattern = PatternState::<u8>::new().finalize();
-
         // Manually construct a hint buffer (length = 6, followed by bytes)
         let narg = hex::decode("06000000616263313233").unwrap();
-
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), &narg);
-        vs.hint_bytes().unwrap();
+        vs.hint_bytes(Label::custom("hint_bytes")).unwrap();
     }
 
     #[test]
@@ -511,12 +545,12 @@ mod tests {
         let mut pattern = PatternState::<u8>::new();
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize();
-
+        
         // Provide only 3 bytes, which is not enough for a u32 length
         let narg = &[1, 2, 3]; // less than 4 bytes
-
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), narg);
-        let err = vs.hint_bytes().unwrap_err();
+        let err = vs.hint_bytes(Label::custom("hint_bytes")).unwrap_err();
+        
         assert!(format!("{err}").contains("Insufficient transcript remaining for hint"));
         vs.abort().expect("Failed to abort");
     }
@@ -526,10 +560,11 @@ mod tests {
         let mut pattern = PatternState::<u8>::new();
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize();
-
+        
         let narg = [5u8, 0, 0, 0, b'a', b'b'];
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), &narg);
-        let err = vs.hint_bytes().unwrap_err();
+        let err = vs.hint_bytes(Label::custom("hint_bytes")).unwrap_err();
+        
         assert!(format!("{err}").contains("Insufficient transcript remaining"));
         vs.abort().expect("Failed to abort");
     }

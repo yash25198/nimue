@@ -8,7 +8,7 @@ use ark_ff::PrimeField;
 
 use super::{FieldToUnitDeserialize, GroupToUnitDeserialize};
 use crate::{
-    codecs::bytes_modp, pattern::{Hierarchy, Interaction, Kind, Label, Length, Pattern as _}, DuplexSpongeInterface, ProofResult, Unit, UnitTranscript, VerifierState
+    codecs::bytes_modp, pattern::{Hierarchy, Interaction, Kind, Label, Length, Pattern as _}, DuplexSpongeInterface, ProofResult, Unit, VerifierState
 };
 
 impl<F, H> FieldToUnitDeserialize<F> for VerifierState<'_, H>
@@ -100,7 +100,7 @@ where
         self.pattern.begin_message::<Fp<C, N>>(label, Length::Fixed(output.len()))?;
         
         // Use fill_next_units which now handles the inner hierarchy correctly
-        self.fill_next_units(Label::BASE_FIELD_COEFFICIENTS, output)?;
+        self.fill_next_units(Label::BASE_FIELD_COEFFICIENTS, Kind::Message, output)?;
         
         // End the outer field message
         self.pattern.end_message::<Fp<C, N>>(label, Length::Fixed(output.len()))?;

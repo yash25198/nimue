@@ -1,4 +1,4 @@
-use crate::{pattern::{Kind, Label, PatternError}, Unit};
+use crate::{pattern::{Label, PatternError}, Unit};
 
 /// Absorbing and squeezing native elements from the sponge.
 pub trait UnitTranscript<U: Unit> {

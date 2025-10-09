@@ -4,8 +4,8 @@ use ark_ff::{Field, Fp, FpConfig, PrimeField};
 use super::{FieldPattern, GroupPattern};
 use crate::codecs::{bytes::Pattern as BytesPattern, unit::Pattern as UnitPattern};
 use crate::{
-    codecs::{ bytes_modp, bytes_uniform_modp, unit, bytes},
-    pattern::{Kind, Label, Length, Pattern, PatternState,PatternError},
+    codecs::{ bytes_modp, bytes_uniform_modp, bytes},
+    pattern::{Label, Length, Pattern, PatternState,PatternError},
 };
 
 impl<F> FieldPattern<F> for PatternState
@@ -99,7 +99,7 @@ where
     }
 
     fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_challenge::<u8>(label, Length::Fixed(size));
+        self.begin_challenge::<u8>(label, Length::Fixed(size))?;
         let n = crate::codecs::random_bits_in_random_modp(Fp::<C, N>::MODULUS) / 8;
         self.challenge_units(Label::UNITS, size.div_ceil(n));
         self.end_challenge::<u8>(label, Length::Fixed(size))
@@ -108,16 +108,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use ark_bls12_381::{Fq2, Fr};
-    use ark_curve25519::EdwardsProjective as Curve;
+    use ark_bls12_381::Fr;
     use ark_ff::{
-        AdditiveGroup, Fp2, Fp2Config, Fp4, Fp4Config, Fp64, MontBackend, MontConfig, MontFp,
-        PrimeField,
+        AdditiveGroup, Fp2, Fp2Config, Fp4, Fp4Config, Fp64, MontBackend, MontConfig,
     };
 
     use super::*;
     use crate::{
-        pattern::{InteractionPattern, Pattern},
+        pattern::Pattern,
         DefaultHash,
     };
 
@@ -164,42 +162,23 @@ mod tests {
 
     #[test]
     fn test_domain_separator() {
-        // OPTION 1 (fails)
-        // let domain_separator = DomainSeparator::new("github.com/mmaker/spongefish")
-        //     .absorb_points(1, "g")
-        //     .absorb_points(1, "pk")
-        //     .ratchet()
-        //     .absorb_points(1, "com")
-        //     .squeeze_scalars(1, "chal")
-        //     .absorb_scalars(1, "resp");
-
-        // // OPTION 2
+        // Use the new Pattern API instead of DomainSeparator
         fn add_schnorr_domain_separator<P, G: ark_ec::CurveGroup>(pattern: &mut P)
         where
-            P: pattern::Pattern + unit::Pattern + FieldPattern<G::BaseField> + GroupPattern<G>,
+            P: crate::pattern::Pattern + crate::codecs::unit::Pattern + FieldPattern<G::BaseField> + GroupPattern<G>,
         {
-            pattern.begin_protocol::<()>(Label::custom("github.com/mmaker/spongefish")).expect("Failed to begin protocol");
-            pattern.message_points(Label::custom("g"), 1);
-            pattern.message_points(Label::custom("pk"), 1);
-            pattern.ratchet();
-            pattern.message_points(Label::custom("com"), 1);
-            pattern.challenge_scalars(Label::custom("chal"), 1);
-            pattern.message_scalars(Label::custom("resp"), 1);
-            pattern.end_protocol::<()>(Label::custom("github.com/mmaker/spongefish")).expect("Failed to end protocol");
+            let _ = pattern.begin_protocol(Label::custom("github.com/mmaker/spongefish"));
+            let _ = pattern.message_points(Label::custom("g"), 1);
+            let _ = pattern.message_points(Label::custom("pk"), 1);
+            let _ = pattern.ratchet();
+            let _ = pattern.message_points(Label::custom("com"), 1);
+            let _ = pattern.challenge_scalars(Label::custom("chal"), 1);
+            let _ = pattern.message_scalars(Label::custom("resp"), 1);
+            let _ = pattern.end_protocol(Label::custom("github.com/mmaker/spongefish"));
         }
         let mut pattern = PatternState::<u8>::new();
         add_schnorr_domain_separator::<_, ark_curve25519::EdwardsProjective>(&mut pattern);
         let pattern = pattern.finalize();
-
-        // OPTION 3 (extra type, trait extensions should be on DomainSeparator or AlgebraicDomainSeparator?)
-        // let domain_separator =
-        //     ArkGroupDomainSeparator::<ark_curve25519::EdwardsProjective>::new("github.com/mmaker/spongefish")
-        //         .add_points(1, "g")
-        //         .add_points(1, "pk")
-        //         .ratchet()
-        //         .add_points(1, "com")
-        //         .challenge_scalars(1, "chal")
-        //         .add_scalars(1, "resp");
 
         assert_eq!(
             format!("{pattern}"),

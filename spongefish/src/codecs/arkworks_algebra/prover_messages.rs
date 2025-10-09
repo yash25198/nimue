@@ -1,12 +1,10 @@
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::{Field, Fp, FpConfig};
-use ark_serialize::CanonicalSerialize;
 use rand::{CryptoRng, RngCore};
 
 use super::{CommonFieldToUnit, CommonGroupToUnit, FieldToUnitSerialize, GroupToUnitSerialize};
 use crate::{
-    pattern::{Hierarchy, Interaction, Kind, Label, Length, Pattern as _, PatternError},
-    CommonUnitToBytes, DuplexSpongeInterface, ProverState, UnitTranscript,
+    pattern::{Label, Length, Pattern as _, PatternError}, BytesToUnitSerialize, CommonUnitToBytes, DuplexSpongeInterface, ProverState, UnitTranscript
 };
 
 impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSerialize<F>
@@ -22,8 +20,9 @@ impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSeri
             f.serialize_compressed(&mut buf).expect("Serialization failed");
         }
 
-        // This will handle: Begin Message "bytes" -> Atomic "units" -> End Message "bytes"
-        self.add_units(Label::BYTES, &buf)?;
+        // Create the bytes hierarchy: Begin Message "bytes" -> Atomic "units" -> End Message "bytes"
+        self.add_bytes(Label::UNITS, &buf)?;
+
         
         // End the outer field message
         self.pattern.end_message::<F>(label, Length::Fixed(input.len()))?;
@@ -69,8 +68,10 @@ where
             p.serialize_compressed(&mut serialized).expect("Serialization failed");
         }
 
-        // This will handle: Begin Message "bytes" -> Atomic "units" -> End Message "bytes"
-        self.add_units(Label::SERIALIZED_GROUP, &serialized)?;
+        // Create the bytes hierarchy: Begin Message "serialized-group" -> Atomic "units" -> End Message "serialized-group"
+        self.pattern.begin_message::<u8>(Label::SERIALIZED_GROUP, Length::Fixed(serialized.len()))?;
+        self.add_units(Label::UNITS, &serialized)?;
+        self.pattern.end_message::<u8>(Label::SERIALIZED_GROUP, Length::Fixed(serialized.len()))?;
 
         // End the outer group message
         self.pattern.end_message::<G>(label, Length::Fixed(input.len()))?;
