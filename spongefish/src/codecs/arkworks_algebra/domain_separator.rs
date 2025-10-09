@@ -14,14 +14,14 @@ where
 {
     fn message_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         self.begin_message::<F>(label, Length::Fixed(count))?;
-        self.message_bytes(Label::BYTES, count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
+        self.message_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
         self.end_message::<F>(label, Length::Fixed(count))?;
         Ok(self)
     }
 
     fn challenge_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         self.begin_challenge::<F>(label, Length::Fixed(count))?;
-        self.challenge_bytes(Label::BYTES, count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
+        self.challenge_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
         self.end_challenge::<F>(label, Length::Fixed(count))?;
         Ok(self)
     }
@@ -48,7 +48,7 @@ where
 {
     fn message_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         self.begin_message::<F>(label, Length::Fixed(count))?;
-        self.message_units(
+        self.message_bytes(
             Label::BASE_FIELD_COEFFICIENTS,
             count * F::extension_degree() as usize,
         )?;
@@ -58,7 +58,7 @@ where
 
     fn challenge_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         self.begin_challenge::<F>(label, Length::Fixed(count))?;
-        self.challenge_units(
+        self.challenge_bytes(
             Label::BASE_FIELD_COEFFICIENTS,
             count * F::extension_degree() as usize,
         )?;
@@ -74,7 +74,7 @@ where
 {
     fn message_points(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         self.begin_message::<G>(label, Length::Fixed(count))?;
-        self.message_units(Label::COORDINATES, count * 2)?;
+        self.message_bytes(Label::COORDINATES, count * 2)?;
         self.end_message::<G>(label, Length::Fixed(count))?;
         Ok(self)
     }
@@ -196,14 +196,14 @@ mod tests {
 15     End Message serialized-group Fixed(32) u8
 16   End Message com Fixed(1) ark_ec::models::twisted_edwards::group::Projective<ark_curve25519::curves::Curve25519Config>
 17   Begin Challenge chal Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
-18     Begin Challenge bytes Fixed(47) u8
+18     Begin Challenge base-field-coefficients-little-endian Fixed(47) u8
 19       Atomic Challenge units Fixed(47) u8
-20     End Challenge bytes Fixed(47) u8
+20     End Challenge base-field-coefficients-little-endian Fixed(47) u8
 21   End Challenge chal Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
 22   Begin Message resp Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
-23     Begin Message bytes Fixed(32) u8
+23     Begin Message base-field-coefficients-little-endian Fixed(32) u8
 24       Atomic Message units Fixed(32) u8
-25     End Message bytes Fixed(32) u8
+25     End Message base-field-coefficients-little-endian Fixed(32) u8
 26   End Message resp Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
 27 End Protocol github.com/mmaker/spongefish None ()
 "#
