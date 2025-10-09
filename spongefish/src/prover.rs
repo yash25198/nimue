@@ -236,7 +236,25 @@ where
     }
 }
 
-// FIXED: UnitTranscript implementation - no double wrapping
+impl<H, R> ProverState<H, u8, R>
+where
+    H: DuplexSpongeInterface,
+    R: RngCore + CryptoRng,
+{
+    /// Helper to squeeze challenge bytes with proper nested pattern structure.
+    /// 
+    /// This handles the pattern: begin(label) -> atomic(UNITS) -> squeeze -> end(label)
+    pub(crate) fn squeeze_challenge_bytes_nested(
+        &mut self,
+        label: Label,
+        output: &mut [u8],
+    ) -> Result<&mut Self, PatternError> {
+        self.pattern.begin_challenge::<u8>(label, Length::Fixed(output.len()))?;
+        self.duplex_sponge.squeeze_unchecked(output);
+        self.pattern.end_challenge::<u8>(label, Length::Fixed(output.len()))?;
+        Ok(self)
+    }
+}
 impl<H, U, R> UnitTranscript<U> for ProverState<H, U, R>
 where
     U: Unit,
