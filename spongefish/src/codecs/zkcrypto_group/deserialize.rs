@@ -11,7 +11,11 @@ where
     H: DuplexSpongeInterface,
     F: PrimeField<Repr = [u8; N]>,
 {
-    fn fill_next_scalars(&mut self, label: Label, output: &mut [F]) -> crate::ProofResult<&mut Self> {
+    fn fill_next_scalars(
+        &mut self,
+        label: Label,
+        output: &mut [F],
+    ) -> crate::ProofResult<&mut Self> {
         // Record the atomic interaction
         self.pattern.interact(Interaction::new::<F>(
             Hierarchy::Atomic,

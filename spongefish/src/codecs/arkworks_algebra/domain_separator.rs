@@ -2,10 +2,12 @@ use ark_ec::CurveGroup;
 use ark_ff::{Field, Fp, FpConfig, PrimeField};
 
 use super::{FieldPattern, GroupPattern};
-use crate::codecs::{bytes::Pattern as BytesPattern, unit::Pattern as UnitPattern};
 use crate::{
-    codecs::{ bytes_modp, bytes_uniform_modp, bytes},
-    pattern::{Label, Length, Pattern, PatternState,PatternError},
+    codecs::{
+        bytes, bytes::Pattern as BytesPattern, bytes_modp, bytes_uniform_modp,
+        unit::Pattern as UnitPattern,
+    },
+    pattern::{Label, Length, Pattern, PatternError, PatternState},
 };
 
 impl<F> FieldPattern<F> for PatternState
@@ -14,14 +16,20 @@ where
 {
     fn message_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         self.begin_message::<F>(label, Length::Fixed(count))?;
-        self.message_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
+        self.message_bytes(
+            Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN,
+            count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
+        )?;
         self.end_message::<F>(label, Length::Fixed(count))?;
         Ok(self)
     }
 
     fn challenge_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         self.begin_challenge::<F>(label, Length::Fixed(count))?;
-        self.challenge_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE))?;
+        self.challenge_bytes(
+            Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN,
+            count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
+        )?;
         self.end_challenge::<F>(label, Length::Fixed(count))?;
         Ok(self)
     }
@@ -108,9 +116,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use ark_ff::{
-        AdditiveGroup, Fp2, Fp2Config, Fp4, Fp4Config, Fp64, MontBackend, MontConfig,
-    };
+    use ark_ff::{AdditiveGroup, Fp2, Fp2Config, Fp4, Fp4Config, Fp64, MontBackend, MontConfig};
 
     use super::*;
 
@@ -162,7 +168,10 @@ mod tests {
         // Use the new Pattern API instead of DomainSeparator
         fn add_schnorr_domain_separator<P, G: ark_ec::CurveGroup>(pattern: &mut P)
         where
-            P: crate::pattern::Pattern + crate::codecs::unit::Pattern + FieldPattern<G::BaseField> + GroupPattern<G>,
+            P: crate::pattern::Pattern
+                + crate::codecs::unit::Pattern
+                + FieldPattern<G::BaseField>
+                + GroupPattern<G>,
         {
             let _ = pattern.begin_protocol(Label::custom("github.com/mmaker/spongefish"));
             let _ = pattern.message_points(Label::custom("g"), 1);
@@ -175,7 +184,7 @@ mod tests {
         }
         let mut pattern = PatternState::<u8>::new();
         add_schnorr_domain_separator::<_, ark_curve25519::EdwardsProjective>(&mut pattern);
-         let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         assert_eq!(
             format!("{pattern}"),

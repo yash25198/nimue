@@ -4,6 +4,7 @@
 //! C = ⟨a, G⟩ + ⟨b, H⟩ + ⟨a, b⟩ U
 
 use std::sync::Arc;
+
 use ark_ec::{AffineRepr, CurveGroup, PrimeGroup, VariableBaseMSM};
 use ark_ff::Field;
 use ark_std::{log2, UniformRand};
@@ -25,23 +26,35 @@ where
     PatternState<u8>: GroupPattern<G> + FieldPattern<G::ScalarField>,
 {
     let mut pattern = PatternState::<u8>::new();
-    
+
     // Statement: Pedersen commitment (public input)
-    pattern.begin_protocol(Label::custom("bulletproof")).expect("Failed to begin protocol");
-    pattern.message_points(Label::custom("commitment"), 1).expect("Failed to add commitment pattern");
+    pattern
+        .begin_protocol(Label::custom("bulletproof"))
+        .expect("Failed to begin protocol");
+    pattern
+        .message_points(Label::custom("commitment"), 1)
+        .expect("Failed to add commitment pattern");
     pattern.ratchet().expect("Failed to ratchet");
-    
+
     // Proof: rounds of left/right commitments and challenges
     let num_rounds = log2(size);
     for _round in 0..num_rounds {
-        pattern.message_points(Label::custom("round"), 2).expect("Failed to add round pattern");
-        pattern.message_scalars(Label::custom("challenge"), 1).expect("Failed to add challenge pattern");
+        pattern
+            .message_points(Label::custom("round"), 2)
+            .expect("Failed to add round pattern");
+        pattern
+            .message_scalars(Label::custom("challenge"), 1)
+            .expect("Failed to add challenge pattern");
     }
-    
+
     // Final message: a and b scalars
-    pattern.message_scalars(Label::custom("final"), 2).expect("Failed to add final pattern");
-    pattern.end_protocol(Label::custom("bulletproof")).expect("Failed to end protocol");
-    
+    pattern
+        .message_scalars(Label::custom("final"), 2)
+        .expect("Failed to add final pattern");
+    pattern
+        .end_protocol(Label::custom("bulletproof"))
+        .expect("Failed to end protocol");
+
     pattern
 }
 
@@ -55,8 +68,8 @@ fn prove<G, R>(
 where
     G: CurveGroup,
     R: rand::RngCore + rand::CryptoRng,
-    for<'a> ProverState<DefaultHash, u8, R>: GroupToUnitSerialize<G>
-        + FieldToUnitSerialize<G::ScalarField>,
+    for<'a> ProverState<DefaultHash, u8, R>:
+        GroupToUnitSerialize<G> + FieldToUnitSerialize<G::ScalarField>,
 {
     assert_eq!(witness.0.len(), witness.1.len());
 
@@ -82,7 +95,7 @@ where
         + G::msm_unchecked(h_right, b_left);
 
     prover.add_points(Label::custom("round"), &[left, right])?;
-    
+
     let x = G::ScalarField::rand(prover.rng());
     prover.add_scalars(Label::custom("challenge"), &[x])?;
     let x_inv = x.inverse().expect("Challenge inverse failed");
@@ -97,7 +110,13 @@ where
 
     let new_statement = *statement + left * x.square() + right * x_inv.square();
 
-    prove(prover, new_generators, &new_statement, new_witness, round + 1)
+    prove(
+        prover,
+        new_generators,
+        &new_statement,
+        new_witness,
+        round + 1,
+    )
 }
 
 fn verify<G>(
@@ -121,11 +140,11 @@ where
         let mut lr_buf = [G::default(); 2];
         verifier.fill_next_points(Label::custom("round"), &mut lr_buf)?;
         let [left, right] = lr_buf;
-        
+
         n /= 2;
         let (g_left, g_right) = g.split_at(n);
         let (h_left, h_right) = h.split_at(n);
-        
+
         let mut x_buf = [G::ScalarField::default(); 1];
         verifier.fill_next_scalars(Label::custom("challenge"), &mut x_buf)?;
         let x = x_buf[0];
@@ -135,7 +154,7 @@ where
         h = fold_generators(h_left, h_right, &x, &x_inv);
         statement = statement + left * x.square() + right * x_inv.square();
     }
-    
+
     let mut ab_buf = [G::ScalarField::default(); 2];
     verifier.fill_next_scalars(Label::custom("final"), &mut ab_buf)?;
     let [a, b] = ab_buf;
@@ -187,12 +206,18 @@ fn main() {
 
     // Test vectors
     let a = (0..size).map(|x| F::from(x as u32)).collect::<Vec<_>>();
-    let b = (0..size).map(|x| F::from(x as u32 + 42)).collect::<Vec<_>>();
+    let b = (0..size)
+        .map(|x| F::from(x as u32 + 42))
+        .collect::<Vec<_>>();
     let ab = dot_prod(&a, &b);
-    
+
     // Generators
-    let g = (0..a.len()).map(|_| GAffine::rand(&mut OsRng)).collect::<Vec<_>>();
-    let h = (0..b.len()).map(|_| GAffine::rand(&mut OsRng)).collect::<Vec<_>>();
+    let g = (0..a.len())
+        .map(|_| GAffine::rand(&mut OsRng))
+        .collect::<Vec<_>>();
+    let h = (0..b.len())
+        .map(|_| GAffine::rand(&mut OsRng))
+        .collect::<Vec<_>>();
     let u = GAffine::rand(&mut OsRng);
 
     let generators = (&g[..], &h[..], &u);
@@ -201,34 +226,44 @@ fn main() {
 
     // Create prover state
     let mut prover = ProverState::new(pattern.clone(), OsRng);
-    prover.begin_protocol(Label::custom("bulletproof"))
+    prover
+        .begin_protocol(Label::custom("bulletproof"))
         .expect("Failed to begin protocol")
         .add_points(Label::custom("commitment"), &[statement])
         .expect("Failed to add commitment")
         .ratchet()
         .expect("Failed to ratchet");
-    
+
     // Generate proof
     prove(&mut prover, generators, &statement, witness, 0).expect("Proving failed");
-    prover.end_protocol(Label::custom("bulletproof")).expect("Failed to end protocol");
+    prover
+        .end_protocol(Label::custom("bulletproof"))
+        .expect("Failed to end protocol");
 
     let proof = prover.finalize().expect("Finalize failed");
 
-    println!("Here's a bulletproof for {} elements ({} bytes)", size, proof.len());
+    println!(
+        "Here's a bulletproof for {} elements ({} bytes)",
+        size,
+        proof.len()
+    );
 
     // Create verifier state
     let mut commitment = [G::default(); 1];
     let mut verifier = VerifierState::new(pattern.clone(), &proof);
-    verifier.begin_protocol(Label::custom("bulletproof"))
+    verifier
+        .begin_protocol(Label::custom("bulletproof"))
         .expect("Failed to begin protocol")
         .fill_next_points(Label::custom("commitment"), &mut commitment)
         .expect("Failed to read commitment")
         .ratchet()
         .expect("Ratchet failed");
-    
+
     // Verify proof
     verify(&mut verifier, generators, size, &commitment[0]).expect("Verification failed");
-    verifier.end_protocol(Label::custom("bulletproof")).expect("Failed to end protocol");
+    verifier
+        .end_protocol(Label::custom("bulletproof"))
+        .expect("Failed to end protocol");
     verifier.finalize().expect("Finalize failed");
 
     println!("✓ Proof verified successfully");

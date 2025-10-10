@@ -2,15 +2,13 @@ use ark_ec::CurveGroup;
 use ark_ff::Field;
 use rand::{CryptoRng, RngCore};
 
-use crate::{
-    pattern::{Label, PatternError, Pattern},
-    duplex_sponge::{Unit, DuplexSpongeInterface},
-    ProverState, VerifierState, ProofResult,
-};
-
 use super::{
-    FieldToUnitSerialize, GroupToUnitSerialize, 
-    FieldToUnitDeserialize, GroupToUnitDeserialize,
+    FieldToUnitDeserialize, FieldToUnitSerialize, GroupToUnitDeserialize, GroupToUnitSerialize,
+};
+use crate::{
+    duplex_sponge::{DuplexSpongeInterface, Unit},
+    pattern::{Label, Pattern, PatternError},
+    ProofResult, ProverState, VerifierState,
 };
 
 // ============================================================================
@@ -37,7 +35,7 @@ use super::{
 /// use spongefish::codecs::arkworks_algebra::ProverFieldMessageExt;
 ///
 /// // Extension trait handles begin/end automatically
-/// prover.add_message_scalars(Label::custom("my_scalars"), &scalars)?;
+/// prover.message_scalars(Label::custom("my_scalars"), &scalars)?;
 /// ```
 pub trait ProverFieldMessageExt<F: Field> {
     /// Add field scalars as a message (handles begin/add/end automatically).
@@ -48,7 +46,7 @@ pub trait ProverFieldMessageExt<F: Field> {
     /// prover.add_scalars(label, Kind::Message, input)?;
     /// prover.end_message::<F>(label, Length::Fixed(input.len()))?;
     /// ```
-    fn add_message_scalars(&mut self, label: Label, input: &[F]) -> Result<&mut Self, PatternError>;
+    fn message_scalars(&mut self, label: Label, input: &[F]) -> Result<&mut Self, PatternError>;
 }
 
 /// Extension trait for adding group messages with automatic pattern handling.
@@ -67,7 +65,7 @@ pub trait ProverGroupMessageExt<G: CurveGroup> {
     /// prover.add_points(label, Kind::Message, input)?;
     /// prover.end_message::<G>(label, Length::Fixed(input.len()))?;
     /// ```
-    fn add_message_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError>;
+    fn message_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError>;
 }
 
 // ============================================================================
@@ -82,9 +80,9 @@ where
     R: RngCore + CryptoRng,
     Self: FieldToUnitSerialize<F> + Pattern,
 {
-    fn add_message_scalars(&mut self, label: Label, input: &[F]) -> Result<&mut Self, PatternError> {
+    fn message_scalars(&mut self, label: Label, input: &[F]) -> Result<&mut Self, PatternError> {
         // Call Pattern trait methods with correct type parameters
-        use crate::pattern::{Pattern, Length};
+        use crate::pattern::{Length, Pattern};
         Pattern::begin_message::<F>(self, label, Length::Fixed(input.len()))?;
         self.add_scalars(input)?;
         Pattern::end_message::<F>(self, label, Length::Fixed(input.len()))?;
@@ -100,9 +98,9 @@ where
     R: RngCore + CryptoRng,
     Self: GroupToUnitSerialize<G> + Pattern,
 {
-    fn add_message_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError> {
+    fn message_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError> {
         // Call Pattern trait methods with correct type parameters
-        use crate::pattern::{Pattern, Length};
+        use crate::pattern::{Length, Pattern};
         Pattern::begin_message::<G>(self, label, Length::Fixed(input.len()))?;
         self.add_points(input)?;
         Pattern::end_message::<G>(self, label, Length::Fixed(input.len()))?;
@@ -130,7 +128,7 @@ pub trait VerifierFieldMessageExt<F: Field> {
     /// verifier.fill_next_scalars(label, output)?;
     /// verifier.end_message::<F>(label, Length::Fixed(output.len()))?;
     /// ```
-    fn read_message_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self>;
+    fn fill_message_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self>;
 }
 
 /// Extension trait for reading group messages with automatic pattern handling.
@@ -149,7 +147,7 @@ pub trait VerifierGroupMessageExt<G: CurveGroup> {
     /// verifier.fill_next_points(label, output)?;
     /// verifier.end_message::<G>(label, Length::Fixed(output.len()))?;
     /// ```
-    fn read_message_points(&mut self, label: Label, output: &mut [G]) -> ProofResult<&mut Self>;
+    fn fill_message_points(&mut self, label: Label, output: &mut [G]) -> ProofResult<&mut Self>;
 }
 
 // ============================================================================
@@ -163,9 +161,9 @@ where
     H: DuplexSpongeInterface<U>,
     Self: FieldToUnitDeserialize<F>,
 {
-    fn read_message_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
+    fn fill_message_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
         // Use Pattern trait methods with correct type parameters
-        use crate::pattern::{Pattern, Length};
+        use crate::pattern::{Length, Pattern};
         Pattern::begin_message::<F>(self, label, Length::Fixed(output.len()))?;
         self.fill_next_scalars(output)?;
         Pattern::end_message::<F>(self, label, Length::Fixed(output.len()))?;
@@ -180,9 +178,9 @@ where
     H: DuplexSpongeInterface<U>,
     Self: GroupToUnitDeserialize<G>,
 {
-    fn read_message_points(&mut self, label: Label, output: &mut [G]) -> ProofResult<&mut Self> {
+    fn fill_message_points(&mut self, label: Label, output: &mut [G]) -> ProofResult<&mut Self> {
         // Use Pattern trait methods with correct type parameters
-        use crate::pattern::{Pattern, Length};
+        use crate::pattern::{Length, Pattern};
         Pattern::begin_message::<G>(self, label, Length::Fixed(output.len()))?;
         self.fill_next_points(output)?;
         Pattern::end_message::<G>(self, label, Length::Fixed(output.len()))?;

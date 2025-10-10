@@ -162,14 +162,24 @@ mod tests {
     #[test]
     fn test_domain_separator() {
         let transcript = InteractionPattern::new(vec![
-            Interaction::new::<usize>(Hierarchy::Begin, Kind::Protocol, Label::custom("test"), Length::None),
+            Interaction::new::<usize>(
+                Hierarchy::Begin,
+                Kind::Protocol,
+                Label::custom("test"),
+                Length::None,
+            ),
             Interaction::new::<Vec<f64>>(
                 Hierarchy::Atomic,
                 Kind::Message,
                 Label::custom("test-message"),
                 Length::Scalar,
             ),
-            Interaction::new::<usize>(Hierarchy::End, Kind::Protocol, Label::custom("test"), Length::None),
+            Interaction::new::<usize>(
+                Hierarchy::End,
+                Kind::Protocol,
+                Label::custom("test"),
+                Length::None,
+            ),
         ])
         .unwrap();
 

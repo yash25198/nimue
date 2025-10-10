@@ -2,8 +2,16 @@ macro_rules! field_traits {
     ($Field:path) => {
         /// Absorb and squeeze field elements to the domain separator.
         pub trait FieldPattern<F: $Field> {
-            fn message_scalars(&mut self, label: $crate::pattern::Label, count: usize) -> Result<&mut Self, $crate::pattern::PatternError>;
-            fn challenge_scalars(&mut self, label: $crate::pattern::Label, count: usize) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn message_scalars(
+                &mut self,
+                label: $crate::pattern::Label,
+                count: usize,
+            ) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn challenge_scalars(
+                &mut self,
+                label: $crate::pattern::Label,
+                count: usize,
+            ) -> Result<&mut Self, $crate::pattern::PatternError>;
         }
 
         /// Interpret verifier messages as uniformly distributed field elements.
@@ -11,24 +19,37 @@ macro_rules! field_traits {
         /// The implementation of this trait **MUST** ensure that the field elements
         /// are uniformly distributed and valid.
         pub trait UnitToField<F: $Field> {
-            fn fill_challenge_scalars(&mut self, label: $crate::pattern::Label, output: &mut [F]) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn fill_challenge_scalars(
+                &mut self,
+                label: $crate::pattern::Label,
+                output: &mut [F],
+            ) -> Result<&mut Self, $crate::pattern::PatternError>;
 
-    fn challenge_scalars<const N: usize>(&mut self, label: $crate::pattern::Label) -> Result<[F; N], $crate::pattern::PatternError> {
-        let mut output = [F::default(); N];
-        self.fill_challenge_scalars(label, &mut output)?;
-        Ok(output)
-    }
+            fn challenge_scalars<const N: usize>(
+                &mut self,
+                label: $crate::pattern::Label,
+            ) -> Result<[F; N], $crate::pattern::PatternError> {
+                let mut output = [F::default(); N];
+                self.fill_challenge_scalars(label, &mut output)?;
+                Ok(output)
+            }
         }
 
         /// Add field elements as shared public information.
         pub trait CommonFieldToUnit<F: $Field> {
             type Repr;
-            fn public_scalars(&mut self, input: &[F]) -> Result<Self::Repr, $crate::pattern::PatternError>;
+            fn public_scalars(
+                &mut self,
+                input: &[F],
+            ) -> Result<Self::Repr, $crate::pattern::PatternError>;
         }
 
         /// Add field elements to the protocol transcript.
         pub trait FieldToUnitSerialize<F: $Field>: CommonFieldToUnit<F> {
-            fn add_scalars(&mut self, input: &[F]) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn add_scalars(
+                &mut self,
+                input: &[F],
+            ) -> Result<&mut Self, $crate::pattern::PatternError>;
         }
 
         /// Deserialize field elements from the protocol transcript.
@@ -51,12 +72,19 @@ macro_rules! group_traits {
     ($Group:path, Scalar: $Field:path) => {
         /// Send group elements in the domain separator.
         pub trait GroupPattern<G: $Group> {
-            fn message_points(&mut self, label: $crate::pattern::Label, count: usize) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn message_points(
+                &mut self,
+                label: $crate::pattern::Label,
+                count: usize,
+            ) -> Result<&mut Self, $crate::pattern::PatternError>;
         }
 
         /// Adds a new prover message consisting of an EC element.
         pub trait GroupToUnitSerialize<G: $Group>: CommonGroupToUnit<G> {
-            fn add_points(&mut self, input: &[G]) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn add_points(
+                &mut self,
+                input: &[G],
+            ) -> Result<&mut Self, $crate::pattern::PatternError>;
         }
 
         /// Receive (and deserialize) group elements from the domain separator.
@@ -80,7 +108,11 @@ macro_rules! group_traits {
             /// This associated type represents the format used, so that other implementation can potentially
             /// re-use the serialized element.
             type Repr;
-            fn public_points(&mut self, label: $crate::pattern::Label, input: &[G]) -> Result<Self::Repr, $crate::pattern::PatternError>;        
+            fn public_points(
+                &mut self,
+                label: $crate::pattern::Label,
+                input: &[G],
+            ) -> Result<Self::Repr, $crate::pattern::PatternError>;
         }
     };
 }

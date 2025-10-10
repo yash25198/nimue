@@ -140,11 +140,11 @@ pub mod keccak;
 pub mod codecs;
 
 pub mod pattern;
-#[cfg(feature = "typed")]
-pub mod typed;
 /// Unit-tests.
 #[cfg(test)]
 mod tests;
+#[cfg(feature = "typed")]
+pub mod typed;
 
 /// Prover's internal state and transcript generation.
 mod prover;

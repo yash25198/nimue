@@ -128,9 +128,9 @@ mod deserialize;
 mod prover_messages;
 
 mod ext;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 pub use ext::{
-    ProverFieldMessageExt, ProverGroupMessageExt,
-    VerifierFieldMessageExt, VerifierGroupMessageExt,
+    ProverFieldMessageExt, ProverGroupMessageExt, VerifierFieldMessageExt, VerifierGroupMessageExt,
 };
 
 /// Tests for arkworks.
@@ -140,8 +140,6 @@ pub use crate::{
     duplex_sponge::Unit, traits::*, DuplexSpongeInterface, ProofError, ProofResult, ProverState,
     VerifierState,
 };
-
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 super::traits::field_traits!(ark_ff::Field);
 super::traits::group_traits!(ark_ec::CurveGroup, Scalar: ark_ff::PrimeField);

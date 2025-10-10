@@ -12,6 +12,8 @@ mod interface;
 /// Legacy hash functions support (e.g. [`sha2`](https://crates.io/crates/sha2), [`blake2`](https://crates.io/crates/blake2)).
 pub mod legacy;
 
+mod tests;
+
 pub use interface::DuplexSpongeInterface;
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
@@ -71,7 +73,7 @@ pub trait Unit: Clone + Sized + zeroize::Zeroize {
     /// This method must serialize units in a deterministic, fixed-size format.
     /// The serialization must be compatible with [`Unit::read`].
     fn write(bunch: &[Self], w: &mut impl std::io::Write) -> Result<(), std::io::Error>;
-    
+
     /// Read a bunch of units from a reader (e.g., for proof deserialization).
     ///
     /// This method must deserialize units written by [`Unit::write`], recovering

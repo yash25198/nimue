@@ -1,4 +1,7 @@
-use crate::{pattern::{Label, PatternError}, Unit};
+use crate::{
+    pattern::{Label, PatternError},
+    Unit,
+};
 
 pub trait Pattern {
     type Unit: Unit;

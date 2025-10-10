@@ -62,24 +62,33 @@ where
         if self.finalized {
             return Err(PatternError::AlreadyFinalized);
         }
-        
+
         if !self.hierarchy_stack.is_empty() {
-            return Err(PatternError::MismatchedBeginEnd { 
-                begin: self.interactions[*self.hierarchy_stack.last().unwrap()].clone(), 
+            return Err(PatternError::MismatchedBeginEnd {
+                begin: self.interactions[*self.hierarchy_stack.last().unwrap()].clone(),
                 end: self.interactions.last().cloned().unwrap_or_else(|| {
-                    Interaction::new::<()>(Hierarchy::End, Kind::Protocol, Label::PROTOCOL, Length::None)
-                })
+                    Interaction::new::<()>(
+                        Hierarchy::End,
+                        Kind::Protocol,
+                        Label::PROTOCOL,
+                        Length::None,
+                    )
+                }),
             });
         }
-        
+
         // Check if the pattern already has a protocol Begin/End at the top level
-        let has_protocol_wrapper = self.interactions.first()
+        let has_protocol_wrapper = self
+            .interactions
+            .first()
             .map(|i| i.hierarchy() == Hierarchy::Begin && i.kind() == Kind::Protocol)
             .unwrap_or(false)
-            && self.interactions.last()
-            .map(|i| i.hierarchy() == Hierarchy::End && i.kind() == Kind::Protocol)
-            .unwrap_or(false);
-        
+            && self
+                .interactions
+                .last()
+                .map(|i| i.hierarchy() == Hierarchy::End && i.kind() == Kind::Protocol)
+                .unwrap_or(false);
+
         // If not wrapped in a protocol, wrap it automatically
         if !has_protocol_wrapper && !self.interactions.is_empty() {
             let mut wrapped = Vec::with_capacity(self.interactions.len() + 2);
@@ -98,7 +107,7 @@ where
             ));
             self.interactions = wrapped;
         }
-        
+
         match InteractionPattern::new(self.interactions) {
             Ok(transcript) => Ok(transcript),
             Err(e) => Err(PatternError::TranscriptError(e.to_string())),
@@ -114,17 +123,24 @@ where
         match interaction.hierarchy() {
             Hierarchy::Begin => {
                 if self.hierarchy_stack.len() >= Self::MAX_NESTING_DEPTH {
-                    return Err(PatternError::DepthExceeded { limit: Self::MAX_NESTING_DEPTH });
+                    return Err(PatternError::DepthExceeded {
+                        limit: Self::MAX_NESTING_DEPTH,
+                    });
                 }
                 self.hierarchy_stack.push(self.interactions.len());
             }
             Hierarchy::End => {
                 let Some(begin_idx) = self.hierarchy_stack.pop() else {
-                    return Err(PatternError::MissingBegin { end: interaction.clone() });
+                    return Err(PatternError::MissingBegin {
+                        end: interaction.clone(),
+                    });
                 };
                 let begin = &self.interactions[begin_idx];
                 if !interaction.closes(begin) {
-                    return Err(PatternError::MismatchedBeginEnd { begin: begin.clone(), end: interaction.clone() });
+                    return Err(PatternError::MismatchedBeginEnd {
+                        begin: begin.clone(),
+                        end: interaction.clone(),
+                    });
                 }
             }
             Hierarchy::Atomic => {
@@ -135,7 +151,6 @@ where
         self.interactions.push(interaction);
         Ok(())
     }
-
 }
 
 impl<U> super::Pattern for PatternState<U>
@@ -150,12 +165,22 @@ where
         Ok(())
     }
 
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+    fn begin<T: ?Sized>(
+        &mut self,
+        label: Label,
+        kind: Kind,
+        length: Length,
+    ) -> Result<&mut Self, PatternError> {
         self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length))?;
         Ok(self)
     }
 
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+    fn end<T: ?Sized>(
+        &mut self,
+        label: Label,
+        kind: Kind,
+        length: Length,
+    ) -> Result<&mut Self, PatternError> {
         self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length))?;
         Ok(self)
     }

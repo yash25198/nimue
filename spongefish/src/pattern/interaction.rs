@@ -20,7 +20,7 @@ pub struct Interaction {
     length: Length,
 }
 
-/// Labels for interactions 
+/// Labels for interactions
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Label(&'static str);
 
@@ -29,19 +29,20 @@ impl Label {
     pub const fn new(s: &'static str) -> Self {
         Self(s)
     }
-    
+
     /// Predefined common labels as constants
     pub const BYTES: Self = Self("bytes");
     pub const UNITS: Self = Self("units");
     pub const COORDINATES: Self = Self("coordinates");
     pub const BASE_FIELD_COEFFICIENTS: Self = Self("base-field-coefficients");
-    pub const BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN : Self = Self("base-field-coefficients-little-endian");
+    pub const BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN: Self =
+        Self("base-field-coefficients-little-endian");
     pub const SERIALIZED_GROUP: Self = Self("serialized-group");
     pub const PUBLIC: Self = Self("public");
     pub const RATCHET: Self = Self("ratchet");
     pub const PROTOCOL: Self = Self("protocol");
     pub const HINT: Self = Self("hint");
-    
+
     /// Get the string representation
     pub const fn as_str(&self) -> &'static str {
         self.0
@@ -157,7 +158,11 @@ impl Display for Interaction {
             write!(
                 f,
                 "{} {} {} {} {}",
-                self.hierarchy, self.kind, self.label.as_str(), self.length, self.type_name,
+                self.hierarchy,
+                self.kind,
+                self.label.as_str(),
+                self.length,
+                self.type_name,
             )
         }
     }

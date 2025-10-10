@@ -1,5 +1,6 @@
 use core::marker::PhantomData;
 use std::sync::Arc;
+
 use rand::{CryptoRng, RngCore};
 
 use crate::{
@@ -71,7 +72,11 @@ where
     R: RngCore + CryptoRng,
 {
     fn from(inner: ProverState<H, U, R>) -> Self {
-        Self { inner, _p: PhantomData, _s: PhantomData }
+        Self {
+            inner,
+            _p: PhantomData,
+            _s: PhantomData,
+        }
     }
 }
 
@@ -89,9 +94,13 @@ where
 
     /// Transition to a new typestate without changing runtime state.
     pub fn transition<SN>(self) -> Prover<P, SN, H, U, R> {
-        Prover { inner: self.inner, _p: PhantomData, _s: PhantomData }
+        Prover {
+            inner: self.inner,
+            _p: PhantomData,
+            _s: PhantomData,
+        }
     }
-    
+
     /// Consume the prover and finalize, returning the proof bytes
     pub fn finalize(self) -> Vec<u8> {
         self.inner.finalize()
@@ -150,7 +159,11 @@ where
     U: Unit,
 {
     fn from(inner: VerifierState<'a, H, U>) -> Self {
-        Self { inner, _p: PhantomData, _s: PhantomData }
+        Self {
+            inner,
+            _p: PhantomData,
+            _s: PhantomData,
+        }
     }
 }
 
@@ -161,9 +174,13 @@ where
 {
     /// Transition to a new typestate without changing runtime state.
     pub fn transition<SN>(self) -> Verifier<'a, P, SN, H, U> {
-        Verifier { inner: self.inner, _p: PhantomData, _s: PhantomData }
+        Verifier {
+            inner: self.inner,
+            _p: PhantomData,
+            _s: PhantomData,
+        }
     }
-    
+
     /// Finalize the verifier
     pub fn finalize(self) {
         self.inner.finalize();

@@ -19,13 +19,13 @@ use ark_std::UniformRand;
 use rand::rngs::OsRng;
 use spongefish::{
     codecs::arkworks_algebra::{
-        FieldPattern, 
-        GroupPattern, 
-        UnitToField,
+        FieldPattern,
+        GroupPattern,
         // Extension traits for ergonomic API
-        ProverFieldMessageExt, 
+        ProverFieldMessageExt,
         ProverGroupMessageExt,
-        VerifierFieldMessageExt, 
+        UnitToField,
+        VerifierFieldMessageExt,
         VerifierGroupMessageExt,
     },
     codecs::unit::Pattern as _,
@@ -39,16 +39,22 @@ where
     PatternState<u8>: GroupPattern<G> + FieldPattern<G::ScalarField>,
 {
     let mut pattern = PatternState::<u8>::new();
-    
+
     pattern.begin_protocol(Label::from("schnorr")).unwrap();
     pattern.message_points(Label::from("generator"), 1).unwrap();
-    pattern.message_points(Label::from("public_key"), 1).unwrap();
+    pattern
+        .message_points(Label::from("public_key"), 1)
+        .unwrap();
     pattern.ratchet().unwrap();
-    pattern.message_points(Label::from("commitment"), 1).unwrap();
-    pattern.challenge_scalars(Label::from("challenge"), 1).unwrap();
+    pattern
+        .message_points(Label::from("commitment"), 1)
+        .unwrap();
+    pattern
+        .challenge_scalars(Label::from("challenge"), 1)
+        .unwrap();
     pattern.message_scalars(Label::from("response"), 1).unwrap();
     pattern.end_protocol(Label::from("schnorr")).unwrap();
-    
+
     pattern
 }
 
@@ -69,17 +75,16 @@ fn prove<G, R>(
 where
     G: CurveGroup,
     R: rand::RngCore + rand::CryptoRng,
-    ProverState<DefaultHash, u8, R>: 
-        ProverGroupMessageExt<G> +
-        ProverFieldMessageExt<G::ScalarField> +
-        UnitToField<G::ScalarField>,
+    ProverState<DefaultHash, u8, R>: ProverGroupMessageExt<G>
+        + ProverFieldMessageExt<G::ScalarField>
+        + UnitToField<G::ScalarField>,
 {
     // Generate random nonce
     let k = G::ScalarField::rand(prover.rng());
     let K = P * k;
 
     // Send commitment
-    prover.add_message_points(Label::from("commitment"), &[K])?;
+    prover.message_points(Label::from("commitment"), &[K])?;
 
     // Get challenge from transcript (Fiat-Shamir)
     let mut c_buf = [G::ScalarField::default(); 1];
@@ -88,28 +93,23 @@ where
 
     // Compute and send response
     let r = k + c * x;
-    prover.add_message_scalars(Label::from("response"), &[r])?;
+    prover.message_scalars(Label::from("response"), &[r])?;
 
     Ok(())
 }
 
 /// Schnorr proof verification
 #[allow(non_snake_case)]
-fn verify<G>(
-    verifier: &mut VerifierState<DefaultHash, u8>, 
-    P: G, 
-    X: G
-) -> ProofResult<()>
+fn verify<G>(verifier: &mut VerifierState<DefaultHash, u8>, P: G, X: G) -> ProofResult<()>
 where
     G: CurveGroup,
-    for<'a> VerifierState<'a, DefaultHash, u8>: 
-        VerifierGroupMessageExt<G> +
-        VerifierFieldMessageExt<G::ScalarField> +
-        UnitToField<G::ScalarField>,
+    for<'a> VerifierState<'a, DefaultHash, u8>: VerifierGroupMessageExt<G>
+        + VerifierFieldMessageExt<G::ScalarField>
+        + UnitToField<G::ScalarField>,
 {
     // Read commitment - USING EXTENSION TRAIT!
     let mut K_buf = [G::default(); 1];
-    verifier.read_message_points(Label::from("commitment"), &mut K_buf)?;
+    verifier.fill_message_points(Label::from("commitment"), &mut K_buf)?;
     let K = K_buf[0];
 
     // Generate challenge from transcript (same as prover via Fiat-Shamir)
@@ -119,7 +119,7 @@ where
 
     // Read response - USING EXTENSION TRAIT!
     let mut r_buf = [G::ScalarField::default(); 1];
-    verifier.read_message_scalars(Label::from("response"), &mut r_buf)?;
+    verifier.fill_message_scalars(Label::from("response"), &mut r_buf)?;
     let r = r_buf[0];
 
     // Verify: P * r == K + X * c
@@ -132,12 +132,16 @@ where
 
 fn main() {
     println!("=== Schnorr Proof Example ===\n");
-    
+
     // Choose elliptic curve group (Curve25519)
     type G = ark_curve25519::EdwardsProjective;
 
     // Step 1: Create and finalize the interaction pattern
-    let pattern = Arc::new(schnorr_pattern::<G>().finalize().expect("Failed to finalize pattern"));
+    let pattern = Arc::new(
+        schnorr_pattern::<G>()
+            .finalize()
+            .expect("Failed to finalize pattern"),
+    );
     println!("✓ Pattern created and finalized");
 
     // Step 2: Setup - generate keys
@@ -147,57 +151,59 @@ fn main() {
 
     // Step 3: Prover generates proof - CLEAN API WITH EXTENSION TRAITS!
     let proof = {
-        let mut prover = ProverState::new(pattern.clone(), OsRng).expect("Failed to create prover");
-        
-        prover.begin_protocol(Label::from("schnorr"))
+        let mut prover = ProverState::new(pattern.clone(), OsRng);
+
+        prover
+            .begin_protocol(Label::from("schnorr"))
             .expect("Failed to begin protocol")
-            .add_message_points(Label::from("generator"), &[P])  // Extension trait!
+            .message_points(Label::from("generator"), &[P]) // Extension trait!
             .expect("Failed to add generator")
-            .add_message_points(Label::from("public_key"), &[X]) // Extension trait!
+            .message_points(Label::from("public_key"), &[X]) // Extension trait!
             .expect("Failed to add public key")
             .ratchet()
             .expect("Failed to ratchet");
-        
+
         // Call prove (breaks the chain, but that's fine)
-        prove(&mut prover, P, x)
-            .expect("Proving failed");
-        
-        prover.end_protocol(Label::from("schnorr"))
+        prove(&mut prover, P, x).expect("Proving failed");
+
+        prover
+            .end_protocol(Label::from("schnorr"))
             .expect("Failed to end protocol");
-        
-        prover.finalize()
-            .expect("Prover finalize failed")
+
+        prover.finalize().expect("Prover finalize failed")
     };
-    
+
     println!("✓ Proof generated ({} bytes)\n", proof.len());
 
     // Step 4: Verifier checks proof - CLEAN API WITH EXTENSION TRAITS!
     let result = {
         let mut verifier = VerifierState::new(pattern.clone(), &proof);
-        
-        verifier.begin_protocol(Label::from("schnorr"))
+
+        verifier
+            .begin_protocol(Label::from("schnorr"))
             .expect("Failed to begin protocol");
-        
+
         let mut generator = [G::default(); 1];
-        verifier.read_message_points(Label::from("generator"), &mut generator)  // Extension trait!
+        verifier
+            .fill_message_points(Label::from("generator"), &mut generator) // Extension trait!
             .expect("Failed to read generator");
-        
+
         let mut public_key = [G::default(); 1];
-        verifier.read_message_points(Label::from("public_key"), &mut public_key) // Extension trait!
+        verifier
+            .fill_message_points(Label::from("public_key"), &mut public_key) // Extension trait!
             .expect("Failed to read public key");
-        
-        verifier.ratchet()
-            .expect("Failed to ratchet");
-        
+
+        verifier.ratchet().expect("Failed to ratchet");
+
         println!("✓ Statement read by verifier");
-        
+
         // Call verify (breaks the chain, but that's fine)
-        verify(&mut verifier, generator[0], public_key[0])
-            .expect("Verification failed");
-        
-        verifier.end_protocol(Label::from("schnorr"))
+        verify(&mut verifier, generator[0], public_key[0]).expect("Verification failed");
+
+        verifier
+            .end_protocol(Label::from("schnorr"))
             .expect("Failed to end protocol");
-        
+
         verifier.finalize()
     };
 

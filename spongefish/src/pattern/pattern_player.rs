@@ -42,18 +42,20 @@ impl PatternPlayer {
     /// are unfinished interactions.
     pub fn finalize(mut self) -> Result<(), PatternError> {
         if self.position > self.pattern.interactions().len() {
-            return Err(PatternError::DepthExceeded { limit: self.position });
+            return Err(PatternError::DepthExceeded {
+                limit: self.position,
+            });
         }
-        
+
         if self.finalized {
             return Err(PatternError::AlreadyFinalized);
         }
-        
+
         if self.position < self.pattern.interactions().len() {
             let expected = self.pattern.interactions()[self.position].clone();
             return Err(PatternError::TranscriptNotFinished { expected });
         }
-        
+
         self.finalized = true;
         Ok(())
     }
@@ -63,45 +65,55 @@ impl PatternPlayer {
         if self.finalized {
             return Err(PatternError::AlreadyFinalized);
         }
-        
-        let expected = self.pattern.interactions().get(self.position)
-            .ok_or_else(|| PatternError::NoMoreExpected { got: interaction.clone() })?;
-        
+
+        let expected = self
+            .pattern
+            .interactions()
+            .get(self.position)
+            .ok_or_else(|| PatternError::NoMoreExpected {
+                got: interaction.clone(),
+            })?;
+
         // Validate the interaction matches the expected one first
         if expected != &interaction {
             self.finalized = true;
-            return Err(PatternError::UnexpectedInteraction { 
-                expected: expected.clone(), 
-                got: interaction.clone() 
+            return Err(PatternError::UnexpectedInteraction {
+                expected: expected.clone(),
+                got: interaction.clone(),
             });
         }
-        
+
         // Validate hierarchy tracking
         match interaction.hierarchy() {
             Hierarchy::Begin => {
                 if self.hierarchy_stack.len() >= Self::MAX_NESTING_DEPTH {
                     self.finalized = true;
-                    return Err(PatternError::DepthExceeded { limit: Self::MAX_NESTING_DEPTH });
+                    return Err(PatternError::DepthExceeded {
+                        limit: Self::MAX_NESTING_DEPTH,
+                    });
                 }
                 self.hierarchy_stack.push(self.position);
-
             }
             Hierarchy::End => {
-                let begin_pos = self.hierarchy_stack.pop()
-                    .ok_or_else(|| PatternError::MissingBegin { end: interaction.clone() })?;
-                
+                let begin_pos =
+                    self.hierarchy_stack
+                        .pop()
+                        .ok_or_else(|| PatternError::MissingBegin {
+                            end: interaction.clone(),
+                        })?;
+
                 if let Some(begin) = self.pattern.interactions().get(begin_pos) {
                     if !interaction.closes(begin) {
                         self.finalized = true;
-                        return Err(PatternError::MismatchedBeginEnd { 
-                            begin: begin.clone(), 
-                            end: interaction.clone() 
+                        return Err(PatternError::MismatchedBeginEnd {
+                            begin: begin.clone(),
+                            end: interaction.clone(),
                         });
                     }
                 }
             }
             Hierarchy::Atomic => {
-                 // Already validated above
+                // Already validated above
             }
         }
         self.position += 1;
@@ -124,12 +136,22 @@ impl super::Pattern for PatternPlayer {
         Ok(())
     }
 
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut PatternPlayer, PatternError> {
+    fn begin<T: ?Sized>(
+        &mut self,
+        label: Label,
+        kind: Kind,
+        length: Length,
+    ) -> Result<&mut PatternPlayer, PatternError> {
         self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length))?;
         Ok(self)
     }
 
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut PatternPlayer, PatternError> {
+    fn end<T: ?Sized>(
+        &mut self,
+        label: Label,
+        kind: Kind,
+        length: Length,
+    ) -> Result<&mut PatternPlayer, PatternError> {
         self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length))?;
         Ok(self)
     }
