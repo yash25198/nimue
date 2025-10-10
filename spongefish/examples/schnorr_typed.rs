@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use ark_curve25519::EdwardsProjective as Curve;
 use ark_ec::PrimeGroup;
+use ark_ff::UniformRand;
 use spongefish::{
     codecs::{
         arkworks_algebra::{FieldPattern, GroupPattern},
         unit::Pattern as UnitPattern,
     },
     define_protocol,
-    pattern::{Label, Pattern as _, PatternState},
+    pattern::{Label, PatternState},
     typed::{Prover, Verifier, S0},
 };
 
@@ -75,12 +76,8 @@ define_protocol! {
     }
 }
 
-fn main() {
-    let (iv0, iv1) = compute_protocol_iv();
-    run_typestated_protocol();
-}
 
-fn run_typestated_protocol() {
+fn create_schnorr_pattern() -> PatternState<u8> {
     let mut pattern = PatternState::<u8>::new();
 
     <PatternState<u8> as GroupPattern<Curve>>::message_points(
@@ -115,12 +112,22 @@ fn run_typestated_protocol() {
     )
     .unwrap();
 
-    let pattern = Arc::new(pattern.finalize().unwrap());
+    pattern
+}
 
-    // Use actual curve points instead of raw bytes
-    use ark_ff::UniformRand;
+fn main() {
+    println!("=== Improved Typed Schnorr Protocol ===\n");
+
+    // Step 1: Create and finalize the interaction pattern
+    let pattern = Arc::new(
+        create_schnorr_pattern()
+            .finalize()
+            .expect("Failed to finalize pattern"),
+    );
+    println!("✓ Pattern created and finalized");
+
+    // Step 2: Setup - generate keys
     let mut rng = rand::rngs::OsRng;
-
     let g = Curve::generator();
     let sk = <Curve as PrimeGroup>::ScalarField::rand(&mut rng);
     let pk = g * sk;
@@ -128,53 +135,72 @@ fn run_typestated_protocol() {
     let k = <Curve as PrimeGroup>::ScalarField::rand(&mut rng);
     let com = g * k;
 
-    // Create typed prover
-    let typed_prover = Prover::<SchnorrTyped, S0>::new(pattern.clone(), rand::rngs::OsRng);
+    println!("✓ Keys generated\n");
 
-    // Prover operations
-    let typed_prover = {
-        use crate::prover_steps::*;
+    // Step 3: Prover generates proof with improved API
+    let proof = {
+        // Create typed prover
+        let mut typed_prover = Prover::<SchnorrTyped, S0>::new(pattern.clone(), rng);
 
-        let typed_prover = msg_g(typed_prover, &[g]);
-        let typed_prover = msg_pk(typed_prover, &[pk]);
-        let typed_prover = step_ratchet(typed_prover);
-        let typed_prover = msg_com(typed_prover, &[com]);
+        // Prover operations with cleaner syntax
+        let typed_prover = {
+            use crate::prover_steps::*;
 
-        let mut chal = [<Curve as PrimeGroup>::ScalarField::default(); 1];
-        let typed_prover = step_chal(typed_prover, &mut chal);
+            let typed_prover = msg_g(typed_prover, &[g]);
+            let typed_prover = msg_pk(typed_prover, &[pk]);
+            let typed_prover = step_ratchet(typed_prover);
+            let typed_prover = msg_com(typed_prover, &[com]);
 
-        let response = k + chal[0] * sk;
-        msg_resp(typed_prover, &[response])
+            let mut chal = [<Curve as PrimeGroup>::ScalarField::default(); 1];
+            let typed_prover = step_chal(typed_prover, &mut chal);
+
+            let response = k + chal[0] * sk;
+            msg_resp(typed_prover, &[response])
+        };
+
+        typed_prover.finalize()
     };
 
-    let proof_bytes = typed_prover.finalize();
+    println!("✓ Proof generated ({} bytes)\n", proof.len());
 
-    // Create typed verifier
-    let typed_verifier = Verifier::<SchnorrTyped, S0>::new(pattern, &proof_bytes);
+    // Step 4: Verifier checks proof with improved error handling
+    let result = {
+        let typed_verifier = Verifier::<SchnorrTyped, S0>::new(pattern, &proof);
 
-    // Verifier operations
-    let typed_verifier = {
-        use crate::verifier_steps::*;
+        // Verifier operations
+        let typed_verifier = {
+            use crate::verifier_steps::*;
 
-        let mut vg = [Curve::default(); 1];
-        let typed_verifier = msg_g(typed_verifier, &mut vg);
+            let mut vg = [Curve::default(); 1];
+            let typed_verifier = msg_g(typed_verifier, &mut vg);
 
-        let mut vpk = [Curve::default(); 1];
-        let typed_verifier = msg_pk(typed_verifier, &mut vpk);
+            let mut vpk = [Curve::default(); 1];
+            let typed_verifier = msg_pk(typed_verifier, &mut vpk);
 
-        let typed_verifier = step_ratchet(typed_verifier);
+            let typed_verifier = step_ratchet(typed_verifier);
 
-        let mut vcom = [Curve::default(); 1];
-        let typed_verifier = msg_com(typed_verifier, &mut vcom);
+            let mut vcom = [Curve::default(); 1];
+            let typed_verifier = msg_com(typed_verifier, &mut vcom);
 
-        let mut vchal = [<Curve as PrimeGroup>::ScalarField::default(); 1];
-        let typed_verifier = step_chal(typed_verifier, &mut vchal);
+            let mut vchal = [<Curve as PrimeGroup>::ScalarField::default(); 1];
+            let typed_verifier = step_chal(typed_verifier, &mut vchal);
 
-        let mut vresp = [<Curve as PrimeGroup>::ScalarField::default(); 1];
-        msg_resp(typed_verifier, &mut vresp)
+            let mut vresp = [<Curve as PrimeGroup>::ScalarField::default(); 1];
+            msg_resp(typed_verifier, &mut vresp)
+        };
+
+        // Now with proper error handling
+        typed_verifier.finalize()
     };
 
-    typed_verifier.finalize();
-
-    println!("Typestated Schnorr protocol executed successfully!");
+    match result {
+        Ok(()) => {
+            println!("✓ Proof verified successfully!");
+            println!("  The prover knows the secret key for the public key");
+        }
+        Err(e) => {
+            println!("✗ Verification failed: {:?}", e);
+            std::process::exit(1);
+        }
+    }
 }

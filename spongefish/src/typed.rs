@@ -105,6 +105,11 @@ where
     pub fn finalize(self) -> Vec<u8> {
         self.inner.finalize().unwrap()
     }
+
+    /// Access the underlying RNG for generating randomness
+    pub fn rng(&mut self) -> &mut (impl rand::CryptoRng + rand::RngCore) {
+        self.inner.rng()
+    }
 }
 
 /// A typestated verifier wrapper enforcing compile-time sequencing.
@@ -182,8 +187,8 @@ where
     }
 
     /// Finalize the verifier
-    pub fn finalize(self) {
-        self.inner.finalize();
+    pub fn finalize(self) -> crate::ProofResult<()> {
+        self.inner.finalize().map_err(|e| crate::ProofError::PatternError(e.to_string()))
     }
 }
 
