@@ -143,14 +143,14 @@ pub mod pattern;
 /// Unit-tests.
 #[cfg(test)]
 mod tests;
-#[cfg(feature = "typed")]
-pub mod typed;
-
 /// Prover's internal state and transcript generation.
 mod prover;
 
 /// Traits for byte support.
 pub mod traits;
+
+#[cfg(feature = "typed")]
+pub mod typed;
 
 pub use duplex_sponge::{legacy::DigestBridge, DuplexSpongeInterface, Unit};
 pub use errors::{ProofError, ProofResult};

@@ -103,7 +103,7 @@ where
 
     /// Consume the prover and finalize, returning the proof bytes
     pub fn finalize(self) -> Vec<u8> {
-        self.inner.finalize()
+        self.inner.finalize().unwrap()
     }
 }
 
@@ -218,6 +218,7 @@ macro_rules! define_protocol {
 
     // Recursive: generate free functions for Prover
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*]) => { $($acc)* };
+    
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_units $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, input: &[U]) -> $crate::typed::Prover<$Name, $method, H, U, R>
         where
@@ -225,11 +226,13 @@ macro_rules! define_protocol {
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
             R: rand::RngCore + rand::CryptoRng,
         {
-            state.inner_mut().add_units(Label::UNITS, input);
+            use $crate::pattern::Label;
+            state.inner_mut().add_units(Label::UNITS, input).expect("Failed to add units");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (challenge_units $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, output: &mut [U]) -> $crate::typed::Prover<$Name, $method, H, U, R>
         where
@@ -237,12 +240,13 @@ macro_rules! define_protocol {
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
             R: rand::RngCore + rand::CryptoRng,
         {
-            use $crate::UnitTranscript;
-            state.inner_mut().fill_challenge_units(output);
+            use $crate::{pattern::Label, UnitTranscript};
+            state.inner_mut().fill_challenge_units(Label::UNITS, output).expect("Failed to fill challenge units");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (ratchet $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>) -> $crate::typed::Prover<$Name, $method, H, U, R>
         where
@@ -250,49 +254,60 @@ macro_rules! define_protocol {
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
             R: rand::RngCore + rand::CryptoRng,
         {
-            state.inner_mut().ratchet();
+            state.inner_mut().ratchet().expect("Failed to ratchet");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_points $method:ident $label:literal) $($tail:tt)*) => {
+        #[cfg(feature = "arkworks-algebra")]
         pub fn $method<G, H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, input: &[G]) -> $crate::typed::Prover<$Name, $method, H, U, R>
         where
             G: ark_ec::CurveGroup,
             U: $crate::duplex_sponge::Unit,
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
             R: rand::RngCore + rand::CryptoRng,
-            $crate::typed::Prover<$Name, $PrevState, H, U, R>: $crate::codecs::arkworks_algebra::GroupToUnitSerialize<G>,
+            $crate::ProverState<H, U, R>: $crate::codecs::arkworks_algebra::ProverGroupMessageExt<G>,
         {
-            state.inner_mut().add_points(input);
+            use $crate::codecs::arkworks_algebra::ProverGroupMessageExt;
+            use $crate::pattern::Label;
+            state.inner_mut().message_points(Label::custom($label), input).expect("Failed to add points");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (challenge_scalars $method:ident $label:literal) $($tail:tt)*) => {
+        #[cfg(feature = "arkworks-algebra")]
         pub fn $method<F, H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, output: &mut [F]) -> $crate::typed::Prover<$Name, $method, H, U, R>
         where
             F: ark_ff::Field,
             U: $crate::duplex_sponge::Unit,
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
             R: rand::RngCore + rand::CryptoRng,
-            $crate::typed::Prover<$Name, $PrevState, H, U, R>: $crate::UnitTranscript<U> + $crate::codecs::arkworks_algebra::UnitToField<F>,
+            $crate::ProverState<H, U, R>: $crate::UnitTranscript<U> + $crate::codecs::arkworks_algebra::UnitToField<F>,
         {
-            state.inner_mut().fill_challenge_scalars(output);
+            use $crate::{pattern::Label, codecs::arkworks_algebra::UnitToField};
+            state.inner_mut().fill_challenge_scalars(Label::custom($label), output).expect("Failed to fill challenge scalars");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_scalars $method:ident $label:literal) $($tail:tt)*) => {
+        #[cfg(feature = "arkworks-algebra")]
         pub fn $method<F, H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, input: &[F]) -> $crate::typed::Prover<$Name, $method, H, U, R>
         where
             F: ark_ff::Field,
             U: $crate::duplex_sponge::Unit,
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
             R: rand::RngCore + rand::CryptoRng,
-            $crate::typed::Prover<$Name, $PrevState, H, U, R>: $crate::codecs::arkworks_algebra::FieldToUnitSerialize<F>,
+            $crate::ProverState<H, U, R>: $crate::codecs::arkworks_algebra::ProverFieldMessageExt<F>,
         {
-            state.inner_mut().add_scalars(input);
+            use $crate::codecs::arkworks_algebra::ProverFieldMessageExt;
+            use $crate::pattern::Label;
+            state.inner_mut().message_scalars(Label::custom($label), input).expect("Failed to add scalars");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
@@ -300,75 +315,90 @@ macro_rules! define_protocol {
 
     // Recursive: generate free functions for Verifier
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*]) => { $($acc)* };
+    
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_units $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<'a, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [U]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
         where
             U: $crate::duplex_sponge::Unit,
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
         {
-            let _ = state.inner_mut().fill_next_units(output);
+            use $crate::pattern::Label;
+            let _ = state.inner_mut().fill_next_units(Label::UNITS, output);
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (challenge_units $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<'a, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [U]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
         where
             U: $crate::duplex_sponge::Unit,
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
         {
-            use $crate::UnitTranscript;
-            state.inner_mut().fill_challenge_units(output);
+            use $crate::{pattern::Label, UnitTranscript};
+            state.inner_mut().fill_challenge_units(Label::UNITS, output).expect("Failed to fill challenge units");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (ratchet $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<'a, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
         where
             U: $crate::duplex_sponge::Unit,
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
         {
-            state.inner_mut().ratchet();
+            state.inner_mut().ratchet().expect("Failed to ratchet");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_points $method:ident $label:literal) $($tail:tt)*) => {
+        #[cfg(feature = "arkworks-algebra")]
         pub fn $method<'a, G, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [G]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
         where
             G: ark_ec::CurveGroup,
             U: $crate::duplex_sponge::Unit,
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
-            $crate::typed::Verifier<'a, $Name, $PrevState, H, U>: $crate::codecs::arkworks_algebra::GroupToUnitDeserialize<G>,
+            $crate::VerifierState<'a, H, U>: $crate::codecs::arkworks_algebra::VerifierGroupMessageExt<G>,
         {
-            let _ = state.inner_mut().fill_next_points(output);
+            use $crate::codecs::arkworks_algebra::VerifierGroupMessageExt;
+            use $crate::pattern::Label;
+            let _ = state.inner_mut().fill_message_points(Label::custom($label), output);
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (challenge_scalars $method:ident $label:literal) $($tail:tt)*) => {
+        #[cfg(feature = "arkworks-algebra")]
         pub fn $method<'a, F, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [F]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
         where
             F: ark_ff::Field,
             U: $crate::duplex_sponge::Unit,
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
-            $crate::typed::Verifier<'a, $Name, $PrevState, H, U>: $crate::UnitTranscript<U> + $crate::codecs::arkworks_algebra::UnitToField<F>,
+            $crate::VerifierState<'a, H, U>: $crate::UnitTranscript<U> + $crate::codecs::arkworks_algebra::UnitToField<F>,
         {
-            state.inner_mut().fill_challenge_scalars(output);
+            use $crate::{pattern::Label, codecs::arkworks_algebra::UnitToField};
+            state.inner_mut().fill_challenge_scalars(Label::custom($label), output).expect("Failed to fill challenge scalars");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
+    
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_scalars $method:ident $label:literal) $($tail:tt)*) => {
+        #[cfg(feature = "arkworks-algebra")]
         pub fn $method<'a, F, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [F]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
         where
             F: ark_ff::Field,
             U: $crate::duplex_sponge::Unit,
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
-            $crate::typed::Verifier<'a, $Name, $PrevState, H, U>: $crate::codecs::arkworks_algebra::FieldToUnitDeserialize<F>,
+            $crate::VerifierState<'a, H, U>: $crate::codecs::arkworks_algebra::VerifierFieldMessageExt<F>,
         {
-            let _ = state.inner_mut().fill_next_scalars(output);
+            use $crate::codecs::arkworks_algebra::VerifierFieldMessageExt;
+            use $crate::pattern::Label;
+            let _ = state.inner_mut().fill_message_scalars(Label::custom($label), output);
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);

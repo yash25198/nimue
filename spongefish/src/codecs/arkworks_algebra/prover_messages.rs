@@ -54,6 +54,7 @@ where
         }
 
         // Add bytes directly - this matches the pattern's inner message_bytes call
+        // The pattern system expects this to use SERIALIZED_GROUP label
         self.message_bytes(Label::SERIALIZED_GROUP, &buf)?;
 
         Ok(self)

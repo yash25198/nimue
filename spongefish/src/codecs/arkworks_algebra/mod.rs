@@ -133,11 +133,11 @@ pub use ext::{
     ProverFieldMessageExt, ProverGroupMessageExt, VerifierFieldMessageExt, VerifierGroupMessageExt,
 };
 
-/// Tests for arkworks.
-// #[cfg(test)]
-// mod tests;
+pub use crate::traits::{
+    BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, UnitToBytes, UnitTranscript,
+};
 pub use crate::{
-    duplex_sponge::Unit, traits::*, DuplexSpongeInterface, ProofError, ProofResult, ProverState,
+    duplex_sponge::Unit, DuplexSpongeInterface, ProofError, ProofResult, ProverState,
     VerifierState,
 };
 
