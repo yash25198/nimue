@@ -1,4 +1,73 @@
 //! Abstract interaction patterns for interactive protocols.
+//!
+//! # Overview
+//!
+//! The pattern system provides a structured way to define and enforce the interaction structure
+//! of cryptographic protocols. It ensures that provers and verifiers follow the same protocol
+//! structure, preventing mismatches that could compromise security.
+//!
+//! # Core Concepts
+//!
+//! ## Pattern Hierarchy
+//!
+//! The pattern system has three main components:
+//!
+//! 1. **[`PatternState`]**: Records interactions during protocol definition
+//!    - Used to define the protocol structure
+//!    - Validates proper nesting of interactions
+//!    - Produces an [`InteractionPattern`] when finalized
+//!
+//! 2. **[`InteractionPattern`]**: Immutable protocol structure
+//!    - Represents a finalized, validated protocol
+//!    - Can be shared between prover and verifier
+//!    - Generates domain separators for cryptographic operations
+//!
+//! 3. **[`PatternPlayer`]**: Validates execution against a pattern
+//!    - Ensures runtime execution matches the defined pattern
+//!    - Used internally by [`ProverState`](crate::ProverState) and [`VerifierState`](crate::VerifierState)
+//!    - Returns errors on pattern mismatches
+//!
+//! ## Interaction Types
+//!
+//! - **Protocol**: Container for mixed interactions (begins/ends a sub-protocol)
+//! - **Public**: Data agreed upon by both prover and verifier
+//! - **Message**: Prover-to-verifier communication (appears in proof)
+//! - **Hint**: Out-of-band prover-to-verifier information (not cryptographically bound)
+//! - **Challenge**: Verifier-to-prover randomness (generated via Fiat-Shamir)
+//!
+//! ## Hierarchy Levels
+//!
+//! - **Atomic**: Single interaction (e.g., one message, one challenge)
+//! - **Begin/End**: Marks boundaries of grouped interactions
+//!
+//! # Example
+//!
+//! ```ignore
+//! use spongefish::pattern::{PatternState, Label};
+//! use spongefish::codecs::bytes::Pattern;
+//!
+//! // Define a protocol pattern
+//! let mut pattern = PatternState::<u8>::new();
+//! pattern.begin_protocol(Label::custom("Schnorr"))?;
+//! pattern.message_bytes(Label::custom("commitment"), 32)?;
+//! pattern.challenge_bytes(Label::custom("challenge"), 32)?;
+//! pattern.message_bytes(Label::custom("response"), 32)?;
+//! pattern.end_protocol(Label::custom("Schnorr"))?;
+//!
+//! // Finalize to get immutable pattern
+//!  let pattern = pattern.finalize().expect("Failed to finalize pattern");
+//!
+//! // Use pattern with prover/verifier
+//! let mut prover = ProverState::from(&pattern);
+//! // ... protocol execution ...
+//! ```
+//!
+//! # Safety Invariants
+//!
+//! - Interactions must be properly nested (each `begin_*` matched with corresponding `end_*`)
+//! - Maximum nesting depth is enforced to prevent stack overflow
+//! - Type information is tracked to ensure type safety across protocol execution
+//! - Labels must match between definition and execution
 
 mod interaction;
 mod interaction_pattern;
@@ -14,9 +83,35 @@ pub use self::{
     pattern_state::PatternState,
 };
 
-/// Trait for objects that implement hierarchy operations.
+/// Trait for objects that implement hierarchical protocol operations.
 ///
-/// It does not offer any [`Kind::Atomic`] operations, these need to be implemented specifically./// Trait for objects that implement hierarchy operations.
+/// This trait provides the foundation for managing protocol structure through hierarchical
+/// begin/end operations. It does not offer any atomic [`Kind`] operations (like individual
+/// messages or challenges); those must be implemented by specific protocol types.
+///
+/// # Design
+///
+/// The trait separates hierarchy management (this trait) from data operations (implemented
+/// elsewhere). This allows for flexible composition where different data types can reuse
+/// the same hierarchical structure.
+///
+/// # Example Implementation
+///
+/// ```ignore
+/// impl Pattern for MyProtocol {
+///     fn begin<T>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+///         // Track that we're beginning a new interaction group
+///         self.hierarchy_stack.push(Interaction::new::<T>(Hierarchy::Begin, kind, label, length));
+///         Ok(self)
+///     }
+///
+///     fn end<T>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+///         // Validate and pop from hierarchy stack
+///         // ...
+///         Ok(self)
+///     }
+/// }
+/// ```
 pub trait Pattern {
     /// End a transcript without finalizing it.
     fn abort(&mut self) -> Result<(), PatternError>;
@@ -100,7 +195,7 @@ mod tests {
             Length::Scalar,
         )).expect("Failed to interact with pattern");
         pattern.end_protocol(Label::custom("Example protocol")).expect("Failed to end protocol");
-        let pattern = pattern.finalize();
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         // Play it back exactly
         let mut playback = PatternPlayer::new(pattern.into());
@@ -125,7 +220,7 @@ mod tests {
             Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        let pattern = pattern.finalize();
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut playback = PatternPlayer::new(pattern.into());
         playback.interact(Interaction::new::<()>(
@@ -162,7 +257,7 @@ mod tests {
             Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        let pattern = pattern.finalize();
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut playback = PatternPlayer::new(pattern.into());
         playback.interact(Interaction::new::<()>(
@@ -191,7 +286,7 @@ mod tests {
             Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        let pattern = pattern.finalize();
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut playback = PatternPlayer::new(pattern.into());
         playback.interact(Interaction::new::<()>(
@@ -220,7 +315,7 @@ mod tests {
             Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        let pattern = pattern.finalize();
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut playback = PatternPlayer::new(pattern.into());
         playback.interact(Interaction::new::<()>(
@@ -249,7 +344,7 @@ mod tests {
             Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        let pattern = pattern.finalize();
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut playback = PatternPlayer::new(pattern.into());
         playback.interact(Interaction::new::<()>(

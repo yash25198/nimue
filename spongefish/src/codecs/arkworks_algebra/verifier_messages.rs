@@ -254,7 +254,7 @@ mod tests {
 
         let mut pattern = PatternState::<u8>::new();    
         <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(&mut pattern, Label::from("tag"), 2).unwrap();
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
         let _ = prover.add_message_scalars(Label::from("tag"), &values);
@@ -281,7 +281,7 @@ mod tests {
 
         let mut pattern = PatternState::<u8>::new();
         <PatternState<u8> as GroupPattern<Curve>>::message_points(&mut pattern, Label::custom("generator"), 1).unwrap();
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
         let _ = prover.add_message_points(Label::custom("generator"), &[point]);
@@ -313,7 +313,7 @@ mod tests {
         // Create a pattern with a challenge scalar
         let mut pattern = PatternState::<u8>::new();
         <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(&mut pattern, Label::from("tag"), 1).unwrap();
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
 

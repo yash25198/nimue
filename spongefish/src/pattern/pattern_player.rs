@@ -20,6 +20,7 @@ pub struct PatternPlayer {
 }
 
 impl PatternPlayer {
+    /// Maximum nesting depth for hierarchical interactions.
     const MAX_NESTING_DEPTH: usize = 64;
     #[must_use]
     pub const fn new(pattern: Arc<InteractionPattern>) -> Self {

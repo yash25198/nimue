@@ -28,7 +28,7 @@ macro_rules! field_traits {
 
         /// Add field elements to the protocol transcript.
         pub trait FieldToUnitSerialize<F: $Field>: CommonFieldToUnit<F> {
-            fn add_scalars(&mut self, label: $crate::pattern::Label,kind : crate::pattern::Kind, input: &[F]) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn add_scalars(&mut self, input: &[F]) -> Result<&mut Self, $crate::pattern::PatternError>;
         }
 
         /// Deserialize field elements from the protocol transcript.
@@ -36,11 +36,11 @@ macro_rules! field_traits {
         /// The implementation of this trait **MUST** ensure that the field elements
         /// are correct encodings.
         pub trait FieldToUnitDeserialize<F: $Field>: CommonFieldToUnit<F> {
-            fn fill_next_scalars(&mut self, label: $crate::pattern::Label, output: &mut [F]) -> $crate::ProofResult<&mut Self>;
+            fn fill_next_scalars(&mut self, output: &mut [F]) -> $crate::ProofResult<&mut Self>;
 
-            fn next_scalars<const N: usize>(&mut self, label: $crate::pattern::Label) -> $crate::ProofResult<[F; N]> {
+            fn next_scalars<const N: usize>(&mut self) -> $crate::ProofResult<[F; N]> {
                 let mut output = [F::default(); N];
-                self.fill_next_scalars(label, &mut output)?;
+                self.fill_next_scalars(&mut output)?;
                 Ok(output)
             }
         }
@@ -56,7 +56,7 @@ macro_rules! group_traits {
 
         /// Adds a new prover message consisting of an EC element.
         pub trait GroupToUnitSerialize<G: $Group>: CommonGroupToUnit<G> {
-            fn add_points(&mut self, label: $crate::pattern::Label,kind : crate::pattern::Kind, input: &[G]) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn add_points(&mut self, input: &[G]) -> Result<&mut Self, $crate::pattern::PatternError>;
         }
 
         /// Receive (and deserialize) group elements from the domain separator.
@@ -65,11 +65,11 @@ macro_rules! group_traits {
         /// valid group elements.
         pub trait GroupToUnitDeserialize<G: $Group + Default> {
             /// Deserialize group elements from the protocol transcript into `output`.
-            fn fill_next_points(&mut self, label: $crate::pattern::Label, output: &mut [G]) -> $crate::ProofResult<&mut Self>;
+            fn fill_next_points(&mut self, output: &mut [G]) -> $crate::ProofResult<&mut Self>;
 
-            fn next_points<const N: usize>(&mut self, label: $crate::pattern::Label) -> $crate::ProofResult<[G; N]> {
+            fn next_points<const N: usize>(&mut self) -> $crate::ProofResult<[G; N]> {
                 let mut output = [G::default(); N];
-                self.fill_next_points(label, &mut output)?;
+                self.fill_next_points(&mut output)?;
                 Ok(output)
             }
         }

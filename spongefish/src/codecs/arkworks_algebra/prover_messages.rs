@@ -19,12 +19,10 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_scalars(&mut self, _label: Label, _kind: Kind, input: &[F]) -> Result<&mut Self, PatternError> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
-        // Serialize to bytes
-        let mut buf = Vec::new();
+    fn add_scalars(&mut self, input: &[F]) -> Result<&mut Self, PatternError> {
+        // Serialize to bytes - pre-allocate with estimated capacity
+        // Typical compressed field element is 32 bytes
+        let mut buf = Vec::with_capacity(input.len() * 32);
         for f in input {
             f.serialize_compressed(&mut buf).expect("Serialization failed");
         }
@@ -42,12 +40,10 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_points(&mut self, _label: Label, _kind: Kind, input: &[G]) -> Result<&mut Self, PatternError> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
-        // Serialize to bytes
-        let mut buf = Vec::new();
+    fn add_points(&mut self, input: &[G]) -> Result<&mut Self, PatternError> {
+        // Serialize to bytes - pre-allocate with estimated capacity
+        // Typical compressed point is 32-48 bytes depending on curve
+        let mut buf = Vec::with_capacity(input.len() * 48);
         for p in input {
             p.serialize_compressed(&mut buf).expect("Serialization failed");
         }
@@ -68,7 +64,8 @@ where
     type Repr = Vec<u8>;
 
     fn public_scalars(&mut self, input: &[F]) -> Result<Self::Repr, PatternError> {
-        let mut buf = Vec::new();
+        // Pre-allocate with estimated capacity (typical field element is 32 bytes)
+        let mut buf = Vec::with_capacity(input.len() * 32);
         for i in input {
             i.serialize_compressed(&mut buf).expect("Serialization failed");
         }
@@ -86,7 +83,8 @@ where
     type Repr = Vec<u8>;
 
     fn public_points(&mut self, label: Label, input: &[G]) -> Result<Self::Repr, PatternError> {
-        let mut buf = Vec::new();
+        // Pre-allocate with estimated capacity (typical point is 32 bytes)
+        let mut buf = Vec::with_capacity(input.len() * 32);
         for i in input {
             i.serialize_compressed(&mut buf).expect("Serialization failed");
         }
@@ -106,10 +104,7 @@ where
     H: DuplexSpongeInterface<Fp<C, N>>,
     R: RngCore + CryptoRng,
 {
-    fn add_scalars(&mut self, _label: Label, _kind: Kind, input: &[F]) -> Result<&mut Self, PatternError> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
+    fn add_scalars(&mut self, input: &[F]) -> Result<&mut Self, PatternError> {
         // Flatten to base field elements
         let flattened: Vec<_> = input
             .iter()
@@ -135,15 +130,7 @@ where
     R: RngCore + CryptoRng,
     C: FpConfig<N>,
 {
-    fn add_points(
-        &mut self, 
-        _label: Label, 
-        _kind: Kind, 
-        input: &[ark_ec::short_weierstrass::Projective<P>]
-    ) -> Result<&mut Self, PatternError> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
+    fn add_points(&mut self, input: &[ark_ec::short_weierstrass::Projective<P>]) -> Result<&mut Self, PatternError> {
         // Extract coordinates
         let mut coords = Vec::with_capacity(input.len() * 2);
         for point in input {
@@ -172,15 +159,7 @@ where
     R: RngCore + CryptoRng,
     C: FpConfig<N>,
 {
-    fn add_points(
-        &mut self, 
-        _label: Label, 
-        _kind: Kind, 
-        input: &[ark_ec::twisted_edwards::Projective<P>]
-    ) -> Result<&mut Self, PatternError> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
+    fn add_points(&mut self, input: &[ark_ec::twisted_edwards::Projective<P>]) -> Result<&mut Self, PatternError> {
         // Extract coordinates
         let mut coords = Vec::with_capacity(input.len() * 2);
         for point in input {
@@ -401,7 +380,7 @@ where
 //     #[test]
 //     fn test_add_scalars_u8_unit() {
 //         // Create a simple pattern without hierarchical structure
-//         let pattern = PatternState::<u8>::new().finalize();
+//         let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
 //         // Create prover state
 //         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
@@ -422,7 +401,7 @@ where
 //     #[test]
 //     fn test_add_points_u8_unit() {
 //         // Create a simple pattern without hierarchical structure
-//         let pattern = PatternState::<u8>::new().finalize();
+//         let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
 //         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
 //         let point = G::generator();
@@ -439,7 +418,7 @@ where
 //     #[test]
 //     fn test_add_points_fp_unit() {
 //         // Create a simple pattern without hierarchical structure
-//         let pattern = PatternState::<u8>::new().finalize();
+//         let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
 //         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
 //         let point = G::generator();
@@ -458,7 +437,7 @@ where
 //         let input = b"hello world!";
 
 //         // Create a simple pattern without hierarchical structure
-//         let pattern = PatternState::<u8>::new().finalize();
+//         let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
 //         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
 

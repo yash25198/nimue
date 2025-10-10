@@ -17,12 +17,65 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 
 /// Basic units over which a sponge operates.
 ///
-/// We require the units to have a precise size in memory, to be cloneable,
-/// and that we can zeroize them.
+/// This trait defines the fundamental type that cryptographic sponges process. Common
+/// implementations include:
+/// - `u8`: For byte-oriented sponges (e.g., Keccak, BLAKE3)
+/// - Field elements (e.g., `Fp`): For algebraic hash functions (e.g., Poseidon, Anemoi)
+///
+/// # Requirements
+///
+/// Types implementing `Unit` must:
+/// - Have a fixed, known size in memory (`Sized`)
+/// - Be cloneable without side effects (`Clone`)
+/// - Support secure deletion (`Zeroize`)
+///
+/// # Safety Invariants
+///
+/// Implementations **must** ensure:
+///
+/// 1. **Deterministic Serialization**: `write()` must produce the same output for the same input
+/// 2. **Lossless Round-trip**: `write()` followed by `read()` must recover the original value
+/// 3. **Fixed Size**: Each unit must serialize to a consistent number of bytes
+/// 4. **Secure Deletion**: `Zeroize` must overwrite all sensitive data
+///
+/// Violating these invariants can lead to:
+/// - Protocol transcript mismatches between prover and verifier
+/// - Security vulnerabilities (if zeroization is incomplete)
+/// - Non-deterministic proof generation
+///
+/// # Example Implementation
+///
+/// ```ignore
+/// impl Unit for MyFieldElement {
+///     fn write(bunch: &[Self], w: &mut impl std::io::Write) -> Result<(), std::io::Error> {
+///         for elem in bunch {
+///             // Fixed-size serialization (e.g., 32 bytes per element)
+///             w.write_all(&elem.to_bytes())?;
+///         }
+///         Ok(())
+///     }
+///
+///     fn read(r: &mut impl std::io::Read, bunch: &mut [Self]) -> Result<(), std::io::Error> {
+///         for elem in bunch {
+///             let mut bytes = [0u8; 32];
+///             r.read_exact(&mut bytes)?;
+///             *elem = Self::from_bytes(&bytes)?;
+///         }
+///         Ok(())
+///     }
+/// }
+/// ```
 pub trait Unit: Clone + Sized + zeroize::Zeroize {
-    /// Write a bunch of units in the wire.
+    /// Write a bunch of units to a writer (e.g., for proof serialization).
+    ///
+    /// This method must serialize units in a deterministic, fixed-size format.
+    /// The serialization must be compatible with [`Unit::read`].
     fn write(bunch: &[Self], w: &mut impl std::io::Write) -> Result<(), std::io::Error>;
-    /// Read a bunch of units from the wire
+    
+    /// Read a bunch of units from a reader (e.g., for proof deserialization).
+    ///
+    /// This method must deserialize units written by [`Unit::write`], recovering
+    /// the exact original values.
     fn read(r: &mut impl std::io::Read, bunch: &mut [Self]) -> Result<(), std::io::Error>;
 }
 

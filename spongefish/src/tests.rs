@@ -94,6 +94,18 @@ fn test_invalid_domsep_sequence() {
     assert!(matches!(result.unwrap_err(), PatternError::UnexpectedInteraction { .. }));
 }
 
+/// A protocol whose domain separator is not finished should panic.
+#[test]
+#[should_panic(expected = "Dropped unfinalized transcript.")]
+fn test_unfinished_domsep() {
+    let mut pattern = PatternState::<u8>::new();
+    pattern.message_units(Label::custom("elt"), 3).expect("Failed to add message units");
+    pattern.challenge_units(Label::custom("another_elt"), 16).expect("Failed to add challenge units");
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
+
+    let mut _verifier: VerifierState = VerifierState::new(pattern.into(), b"");
+}
+
 /// The domain separator tag should be deterministic.
 #[test]
 fn test_deterministic() {

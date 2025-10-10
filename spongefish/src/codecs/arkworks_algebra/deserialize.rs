@@ -25,10 +25,7 @@ where
     F: Field,
     H: DuplexSpongeInterface,
 {
-    fn fill_next_scalars(&mut self, _label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
+    fn fill_next_scalars(&mut self, output: &mut [F]) -> ProofResult<&mut Self> {
         // Calculate buffer size for ALL scalars
         let scalar_bytes = bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
         let total_bytes = output.len() * scalar_bytes;
@@ -53,10 +50,7 @@ where
     G: CurveGroup,
     H: DuplexSpongeInterface,
 {
-    fn fill_next_points(&mut self, _label: Label, output: &mut [G]) -> ProofResult<&mut Self> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
+    fn fill_next_points(&mut self, output: &mut [G]) -> ProofResult<&mut Self> {
         // Calculate buffer size for ALL points
         let point_size = G::default().compressed_size();
         let total_bytes = output.len() * point_size;
@@ -86,10 +80,7 @@ where
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn fill_next_scalars(&mut self, _label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
+    fn fill_next_scalars(&mut self, output: &mut [F]) -> ProofResult<&mut Self> {
         // Calculate number of base field elements needed
         let extension_degree = F::extension_degree() as usize;
         let mut flattened = vec![Fp::<C, N>::default(); output.len() * extension_degree];
@@ -120,14 +111,7 @@ where
     H: DuplexSpongeInterface<Fp<C, N>>,
     C: FpConfig<N>,
 {
-    fn fill_next_points(
-        &mut self, 
-        _label: Label, 
-        output: &mut [ark_ec::short_weierstrass::Projective<P>]
-    ) -> ProofResult<&mut Self> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
+    fn fill_next_points(&mut self, output: &mut [ark_ec::short_weierstrass::Projective<P>]) -> ProofResult<&mut Self> {
         // Read all coordinates (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
         self.fill_next_units(Label::COORDINATES, &mut coords)?;
@@ -157,14 +141,7 @@ where
     H: DuplexSpongeInterface<Fp<C, N>>,
     C: FpConfig<N>,
 {
-    fn fill_next_points(
-        &mut self, 
-        _label: Label, 
-        output: &mut [ark_ec::twisted_edwards::Projective<P>]
-    ) -> ProofResult<&mut Self> {
-        // NO begin/end here - pattern trait handles that
-        // Just do the inner atomic operation
-        
+    fn fill_next_points(&mut self, output: &mut [ark_ec::twisted_edwards::Projective<P>]) -> ProofResult<&mut Self> {
         // Read all coordinates (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
         self.fill_next_units(Label::COORDINATES, &mut coords)?;
@@ -212,12 +189,12 @@ mod tests {
         use ark_bls12_381::Fr as F;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new().finalize();
+        let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
 
         let mut out = [F::ZERO; 2];
-        let result = verifier.fill_next_scalars(Label::custom("scalar"), &mut out);
+        let result = verifier.fill_next_scalars(&mut out);
         
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
@@ -229,11 +206,11 @@ mod tests {
     #[test]
     fn test_fill_next_scalars_fp_unit() {
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<BabyBear>::new().finalize();
+        let pattern = PatternState::<BabyBear>::new().finalize().expect("Failed to finalize pattern");
 
         let mut verifier: VerifierState<DefaultHash, u8> = VerifierState::new(Arc::new(pattern), &[]);
         let mut out = [BabyBear::ZERO; 2];
-        let result = verifier.fill_next_scalars(Label::custom("x"), &mut out);
+        let result = verifier.fill_next_scalars(&mut out);
         
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
@@ -247,11 +224,11 @@ mod tests {
         type G = EdwardsProjective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new().finalize();
+        let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
         let mut out = [G::ZERO];
-        let result = verifier.fill_next_points(Label::custom("pt"), &mut out);
+        let result = verifier.fill_next_points(&mut out);
         
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
@@ -265,11 +242,11 @@ mod tests {
         type G = G1Projective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new().finalize();
+        let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
         let mut out = [G::ZERO];
-        let result = verifier.fill_next_points(Label::custom("pt"), &mut out);
+        let result = verifier.fill_next_points(&mut out);
         
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
@@ -283,11 +260,11 @@ mod tests {
         type G = EdwardsProjective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new().finalize();
+        let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
         let mut out = [G::ZERO];
-        let result = verifier.fill_next_points(Label::custom("pt"), &mut out);
+        let result = verifier.fill_next_points( &mut out);
         
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
@@ -301,11 +278,11 @@ mod tests {
         type G = G1Projective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new().finalize();
+        let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
         let mut out = [G::ZERO];
-        let result = verifier.fill_next_points(Label::custom("pt"), &mut out);
+        let result = verifier.fill_next_points( &mut out);
         
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
