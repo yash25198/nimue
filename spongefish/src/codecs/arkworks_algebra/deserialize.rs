@@ -4,9 +4,8 @@ use ark_ec::{
     CurveGroup,
 };
 use ark_ff::{Field, Fp, FpConfig, PrimeField};
-use ark_serialize::CanonicalDeserialize;
 use crate::traits::BytesToUnitDeserialize;
-use crate::pattern::PatternError;
+
 
 use super::{FieldToUnitDeserialize, GroupToUnitDeserialize};
 use crate::{
@@ -26,7 +25,7 @@ where
     F: Field,
     H: DuplexSpongeInterface,
 {
-    fn fill_next_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
+    fn fill_next_scalars(&mut self, _label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
         // NO begin/end here - pattern trait handles that
         // Just do the inner atomic operation
         
@@ -54,7 +53,7 @@ where
     G: CurveGroup,
     H: DuplexSpongeInterface,
 {
-    fn fill_next_points(&mut self, label: Label, output: &mut [G]) -> ProofResult<&mut Self> {
+    fn fill_next_points(&mut self, _label: Label, output: &mut [G]) -> ProofResult<&mut Self> {
         // NO begin/end here - pattern trait handles that
         // Just do the inner atomic operation
         
@@ -87,7 +86,7 @@ where
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn fill_next_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
+    fn fill_next_scalars(&mut self, _label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
         // NO begin/end here - pattern trait handles that
         // Just do the inner atomic operation
         
@@ -123,7 +122,7 @@ where
 {
     fn fill_next_points(
         &mut self, 
-        label: Label, 
+        _label: Label, 
         output: &mut [ark_ec::short_weierstrass::Projective<P>]
     ) -> ProofResult<&mut Self> {
         // NO begin/end here - pattern trait handles that
@@ -160,7 +159,7 @@ where
 {
     fn fill_next_points(
         &mut self, 
-        label: Label, 
+        _label: Label, 
         output: &mut [ark_ec::twisted_edwards::Projective<P>]
     ) -> ProofResult<&mut Self> {
         // NO begin/end here - pattern trait handles that
@@ -187,20 +186,15 @@ where
 mod tests {
     use ark_bls12_381::G1Projective;
     use ark_curve25519::EdwardsProjective;
-    use ark_ec::{CurveGroup, PrimeGroup};
-    use ark_ff::{AdditiveGroup, Fp64, MontBackend, MontConfig, UniformRand};
-    use ark_serialize::CanonicalSerialize;
+    use ark_ff::{AdditiveGroup, Fp64, MontBackend, MontConfig};
     use std::sync::Arc;
 
-    use super::*;
     use crate::{
         codecs::arkworks_algebra::{
-            FieldPattern, 
-            GroupPattern, 
             FieldToUnitDeserialize,
             GroupToUnitDeserialize,
         },
-        pattern::{PatternState, Pattern as _, Label},
+        pattern::{PatternState, Label},
         DefaultHash,
         VerifierState,
     };

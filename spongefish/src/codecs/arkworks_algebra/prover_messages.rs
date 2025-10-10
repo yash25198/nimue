@@ -19,7 +19,7 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_scalars(&mut self, label: Label, kind: Kind, input: &[F]) -> Result<&mut Self, PatternError> {
+    fn add_scalars(&mut self, _label: Label, _kind: Kind, input: &[F]) -> Result<&mut Self, PatternError> {
         // NO begin/end here - pattern trait handles that
         // Just do the inner atomic operation
         
@@ -42,7 +42,7 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_points(&mut self, label: Label, kind: Kind, input: &[G]) -> Result<&mut Self, PatternError> {
+    fn add_points(&mut self, _label: Label, _kind: Kind, input: &[G]) -> Result<&mut Self, PatternError> {
         // NO begin/end here - pattern trait handles that
         // Just do the inner atomic operation
         
@@ -106,7 +106,7 @@ where
     H: DuplexSpongeInterface<Fp<C, N>>,
     R: RngCore + CryptoRng,
 {
-    fn add_scalars(&mut self, label: Label, kind: Kind, input: &[F]) -> Result<&mut Self, PatternError> {
+    fn add_scalars(&mut self, _label: Label, _kind: Kind, input: &[F]) -> Result<&mut Self, PatternError> {
         // NO begin/end here - pattern trait handles that
         // Just do the inner atomic operation
         
@@ -137,8 +137,8 @@ where
 {
     fn add_points(
         &mut self, 
-        label: Label, 
-        kind: Kind, 
+        _label: Label, 
+        _kind: Kind, 
         input: &[ark_ec::short_weierstrass::Projective<P>]
     ) -> Result<&mut Self, PatternError> {
         // NO begin/end here - pattern trait handles that
@@ -174,8 +174,8 @@ where
 {
     fn add_points(
         &mut self, 
-        label: Label, 
-        kind: Kind, 
+        _label: Label, 
+        _kind: Kind, 
         input: &[ark_ec::twisted_edwards::Projective<P>]
     ) -> Result<&mut Self, PatternError> {
         // NO begin/end here - pattern trait handles that

@@ -6,7 +6,7 @@ use crate::{
     codecs::unit::Pattern as UnitPattern,
     duplex_sponge::legacy::DigestBridge,
     keccak::Keccak,
-    pattern::{Kind, Label, Length, Pattern, PatternState},
+    pattern::{Label, Length, Pattern, PatternState,PatternError},
     traits::{BytesToUnitSerialize, UnitToBytes},
     DuplexSpongeInterface, ProverState, UnitTranscript, VerifierState,
 };
@@ -39,12 +39,12 @@ fn test_prover_bytewriter_correct() {
     // Expect exactly one add_bytes call.
     let mut pattern = PatternState::<u8>::new();
     pattern.begin_message::<u8>(Label::custom("bytes"), Length::Fixed(1)).expect("Failed to begin message");
-    pattern.message_units(Label::custom("units"), 1);
+    pattern.message_units(Label::custom("units"), 1).expect("Failed to add message units");
     pattern.end_message::<u8>(Label::custom("bytes"), Length::Fixed(1)).expect("Failed to end message");
     let pattern = pattern.finalize();
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
-    prover_state.add_bytes(Label::BYTES, &[0u8]);
+    prover_state.add_bytes(Label::BYTES, &[0u8]).expect("Failed to add bytes");
     let proof = prover_state.finalize().unwrap();
     assert_eq!(hex::encode(proof), "00");
 }
@@ -81,20 +81,17 @@ fn test_prover_public_units_invalid() {
     prover_state.public_units(Label::custom("public_units"), &[1u8]).expect("Second public_units should fail");
 }
 
-/// A protocol flow whose pattern does not match should panic.
 #[test]
-#[should_panic(
-    expected = "Received interaction Atomic Challenge fill_challenge_units Fixed(16) u8, but expected Atomic Message units Fixed(3) u8"
-)]
 fn test_invalid_domsep_sequence() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_units(Label::custom("units"), 3);
-    pattern.challenge_units(Label::custom("challenge_units"), 1);
+    pattern.message_units(Label::custom("units"), 3).expect("Failed to add message units");
+    pattern.challenge_units(Label::custom("challenge_units"), 1).expect("Failed to add challenge units");
     let pattern = pattern.finalize();
 
     let mut verifier_state: VerifierState<Keccak> = VerifierState::new(Arc::new(pattern), &[]);
-    // This should panic due to pattern mismatch.
-    verifier_state.fill_challenge_bytes(Label::custom("fill_challenge_units"), &mut [0u8; 16]);
+    let result = verifier_state.fill_challenge_bytes(Label::custom("fill_challenge_units"), &mut [0u8; 16]);
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), PatternError::UnexpectedInteraction { .. }));
 }
 
 /// A protocol whose domain separator is not finished should panic.
@@ -102,8 +99,8 @@ fn test_invalid_domsep_sequence() {
 #[should_panic(expected = "Dropped unfinalized transcript.")]
 fn test_unfinished_domsep() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_units(Label::custom("elt"), 3);
-    pattern.challenge_units(Label::custom("another_elt"), 16);
+    pattern.message_units(Label::custom("elt"), 3).expect("Failed to add message units");
+    pattern.challenge_units(Label::custom("another_elt"), 16).expect("Failed to add challenge units");
     let pattern = pattern.finalize();
 
     let mut _verifier: VerifierState = VerifierState::new(pattern.into(), b"");
@@ -113,8 +110,8 @@ fn test_unfinished_domsep() {
 #[test]
 fn test_deterministic() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_units(Label::custom("elt"), 3);
-    pattern.challenge_units(Label::custom("another_elt"), 16);
+    pattern.message_units(Label::custom("elt"), 3).expect("Failed to add message units");
+    pattern.challenge_units(Label::custom("another_elt"), 16).expect("Failed to add challenge units");
     let pattern = pattern.finalize();
 
     let iv1 = pattern.domain_separator();
@@ -134,65 +131,73 @@ fn test_statistics() {
 fn test_transcript_readwrite() {
     // Pattern for prover and verifier sequence: add_units, fill_challenge_units, two fill_next_units, then fill_challenge_units
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_units(Label::custom("units"), 10);
-    pattern.challenge_units(Label::custom("fill_challenge_units"), 10);
-    pattern.message_units(Label::custom("units"), 5);
-    pattern.message_units(Label::custom("units"), 5);
-    pattern.challenge_units(Label::custom("fill_challenge_units"), 10);
+    pattern.message_units(Label::custom("units"), 10).expect("Failed to add message units");
+    pattern.challenge_units(Label::custom("fill_challenge_units"), 10).expect("Failed to add challenge units");
+    pattern.message_units(Label::custom("units"), 5).expect("Failed to add challenge units");
+    pattern.message_units(Label::custom("units"), 5).expect("Failed to add message units");
+    pattern.challenge_units(Label::custom("fill_challenge_units"), 10).expect("Failed to add challenge units");
     let pattern = pattern.finalize();
 
     let mut prover_state: ProverState = ProverState::from(&pattern);
-    prover_state.add_units(Label::UNITS, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    prover_state.add_units(Label::UNITS, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap();
+    let mut data = [0u8; 10];
+    prover_state.fill_challenge_units(Label::custom("fill_challenge_units"), &mut data).unwrap();
     assert_eq!(
-        hex::encode(prover_state.challenge_bytes::<10>(Label::custom("fill_challenge_units")).unwrap()),
-        "0ccd176155e008b158ad"
+        hex::encode(data),
+        "33ea75e06b208b3534e2"
     );
-    prover_state.add_units(Label::UNITS, &[10, 11, 12, 13, 14]);
-    prover_state.add_units(Label::UNITS, &[15, 16, 17, 18, 19]);
+    prover_state.add_units(Label::UNITS, &[0, 1, 2, 3, 4]).unwrap();
+    prover_state.add_units(Label::UNITS, &[5, 6, 7, 8, 9]).unwrap();
+    let mut data = [0u8; 10];
+    prover_state.fill_challenge_units(Label::custom("fill_challenge_units"), &mut data).unwrap();
     assert_eq!(
-        hex::encode(prover_state.challenge_bytes::<10>(Label::custom("fill_challenge_units")).unwrap()),
-        "0f691da125269385ceea"
+        hex::encode(data),
+        "589a84f101865ef21fa5"
     );
     let proof = prover_state.finalize().unwrap();
     assert_eq!(
         hex::encode(&proof),
-        "000102030405060708090a0b0c0d0e0f10111213"
+        "0001020304050607080900010203040506070809"
     );
 
     let mut verifier_state: VerifierState = VerifierState::new(Arc::new(pattern), &proof);
     let mut input = [0u8; 10];
     verifier_state.fill_next_units(Label::custom("units"), &mut input).unwrap();
     assert_eq!(input, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    let mut data = [0u8; 10];
+    verifier_state.fill_challenge_units(Label::custom("fill_challenge_units"), &mut data).unwrap();
     assert_eq!(
-        hex::encode(verifier_state.challenge_bytes::<10>(Label::custom("fill_challenge_units")).unwrap()),
-        "0ccd176155e008b158ad"
+        hex::encode(data),
+        "33ea75e06b208b3534e2"
     );
     let mut input = [0u8; 5];
     verifier_state.fill_next_units(Label::custom("units"), &mut input).unwrap();
-    assert_eq!(input, [10, 11, 12, 13, 14]);
+    assert_eq!(input, [0, 1, 2, 3, 4]);
     verifier_state.fill_next_units(Label::custom("units"), &mut input).unwrap();
-    assert_eq!(input, [15, 16, 17, 18, 19]);
+    assert_eq!(input, [5, 6, 7, 8, 9]);
+    let mut data = [0u8; 10];
+    verifier_state.fill_challenge_units(Label::custom("fill_challenge_units"), &mut data).unwrap();
     assert_eq!(
-        hex::encode(verifier_state.challenge_bytes::<10>(Label::custom("fill_challenge_units")).unwrap()),
-        "0f691da125269385ceea"
+        hex::encode(data),
+        "589a84f101865ef21fa5"
     );
-    verifier_state.finalize();
+    verifier_state.finalize().unwrap();
 }
 
-/// An IO that is not fully finished should fail.
-/// An IO that is not fully finished should panic.
+
 #[test]
-#[should_panic]
 fn test_incomplete_domsep() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_units(Label::custom("units"), 10);
-    pattern.challenge_units(Label::custom("fill_challenge_units"), 1);
+    pattern.message_units(Label::custom("units"), 10).expect("Failed to add message units");
+    pattern.challenge_units(Label::custom("fill_challenge_units"), 1).expect("Failed to add challenge units");
     let pattern = pattern.finalize();
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
-    prover_state.add_units(Label::UNITS, &[0u8; 10]);
+    prover_state.add_units(Label::UNITS, &[0u8; 10]).unwrap();
     // This should panic due to pattern mismatch length
-    prover_state.fill_challenge_bytes(Label::custom("fill_challenge_units"), &mut [0u8; 10]);
+    let result = prover_state.fill_challenge_bytes(Label::custom("fill_challenge_units"), &mut [0u8; 10]);
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), PatternError::UnexpectedInteraction { .. }));
 }
 
 /// The user should respect the domain separator even with empty length.
@@ -230,13 +235,13 @@ where
 
     let mut pattern = PatternState::<u8>::new();
     pattern.begin_message::<u8>(Label::custom("bytes"), Length::Fixed(16)).expect("Failed to begin message");
-    pattern.message_units(Label::custom("units"), 16);
+    pattern.message_units(Label::custom("units"), 16).expect("Failed to add message units");
     pattern.end_message::<u8>(Label::custom("bytes"), Length::Fixed(16)).expect("Failed to end message");
-    pattern.challenge_units(Label::custom("fill_challenge_units"), 16);
+    pattern.challenge_units(Label::custom("fill_challenge_units"), 16).expect("Failed to add challenge units");
     let pattern = pattern.finalize();
 
     let mut prover_state: ProverState<H> = ProverState::from(&pattern);
-    prover_state.add_bytes(Label::custom("bytes"), bytes);
+    prover_state.add_bytes(Label::custom("bytes"), bytes).unwrap();
     let _challenge = prover_state.challenge_bytes::<16>(Label::custom("fill_challenge_units"));
     let _proof = prover_state.finalize();
 }

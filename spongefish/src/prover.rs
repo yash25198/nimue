@@ -92,20 +92,7 @@ where
     H: DuplexSpongeInterface<U>,
 {
     fn from(pattern: &InteractionPattern) -> Self {
-        let mut state = Self::new(Arc::new(pattern.clone()), DefaultRng::default());
-        // Handle the automatic protocol wrapping that PatternState::finalize() adds
-        // The pattern starts with Begin Protocol, so we need to consume it
-        if pattern.interactions().first()
-            .map(|i| i.hierarchy() == crate::pattern::Hierarchy::Begin && i.kind() == Kind::Protocol)
-            .unwrap_or(false)
-        {
-            if let Err(e) = state.pattern.begin::<()>(Label::PROTOCOL, Kind::Protocol, Length::None) {
-                // If we fail to begin, mark as finalized to avoid panic in Drop
-                let _ = state.pattern.abort();
-                panic!("Failed to begin protocol: {e}");
-            }
-        }
-        state
+        Self::new(Arc::new(pattern.clone()), DefaultRng::default())
     }
 }
 
@@ -125,13 +112,28 @@ where
             csrng,
         };
 
-        Self {
-            pattern: PatternPlayer::new(pattern),
+        let mut state = Self {
+            pattern: PatternPlayer::new(pattern.clone()),
             rng,
             duplex_sponge: H::new(iv),
             narg_string: Vec::new(),
             _unit_type: PhantomData,
+        };
+        
+        // Handle the automatic protocol wrapping that PatternState::finalize() adds
+        // The pattern starts with Begin Protocol, so we need to consume it
+        if pattern.interactions().first()
+            .map(|i| i.hierarchy() == crate::pattern::Hierarchy::Begin && i.kind() == Kind::Protocol && *i.label() == Label::PROTOCOL)
+            .unwrap_or(false)
+        {
+            if let Err(e) = state.pattern.begin::<()>(Label::PROTOCOL, Kind::Protocol, Length::None) {
+                // If we fail to begin, mark as finalized to avoid panic in Drop
+                let _ = state.pattern.abort();
+                panic!("Failed to begin protocol: {e}");
+            }
         }
+        
+        state
     }
 
     /// Add units with a label to the transcript
@@ -237,7 +239,7 @@ where
         // The pattern ends with End Protocol, so we need to consume it
         let arc_pattern = self.pattern.pattern().clone();
         if arc_pattern.interactions().last()
-            .map(|i| i.hierarchy() == Hierarchy::End && i.kind() == Kind::Protocol)
+            .map(|i| i.hierarchy() == Hierarchy::End && i.kind() == Kind::Protocol && *i.label() == Label::PROTOCOL)
             .unwrap_or(false)
         {
             self.pattern.end::<()>(Label::PROTOCOL, Kind::Protocol, Length::None)?;

@@ -39,7 +39,7 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         // Handle the automatic protocol wrapping that PatternState::finalize() adds
         // The pattern starts with Begin Protocol, so we need to consume it
         if pattern.interactions().first()
-            .map(|i| i.hierarchy() == Hierarchy::Begin && i.kind() == Kind::Protocol)
+            .map(|i| i.hierarchy() == Hierarchy::Begin && i.kind() == Kind::Protocol && *i.label() == Label::PROTOCOL)
             .unwrap_or(false)
         {
             if let Err(e) = state.pattern.begin::<()>(Label::PROTOCOL, Kind::Protocol, Length::None) {
@@ -182,7 +182,7 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         // The pattern ends with End Protocol, so we need to consume it
         let arc_pattern = self.pattern.pattern().clone();
         if arc_pattern.interactions().last()
-            .map(|i| i.hierarchy() == Hierarchy::End && i.kind() == Kind::Protocol)
+            .map(|i| i.hierarchy() == Hierarchy::End && i.kind() == Kind::Protocol && *i.label() == Label::PROTOCOL)
             .unwrap_or(false)
         {
             self.pattern.end::<()>(Label::PROTOCOL, Kind::Protocol, Length::None)?;
@@ -424,6 +424,7 @@ mod tests {
         let mut buf = [0u8; 4];
         
         assert!(vs.fill_next_units(Label::UNITS, &mut buf).is_err());
+        vs.abort().expect("Failed to abort");
     }
 
     #[test]
@@ -544,7 +545,7 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_length_prefix_too_short() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
+        pattern.hint_bytes_dynamic(Label::custom("hint_bytes")).expect("Failed to add hint bytes to pattern");
         let pattern = pattern.finalize();
         
         // Provide only 3 bytes, which is not enough for a u32 length
@@ -559,7 +560,7 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_declared_hint_too_long() {
         let mut pattern = PatternState::<u8>::new();
-        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
+        pattern.hint_bytes_dynamic(Label::custom("hint_bytes")).expect("Failed to add hint bytes to pattern");
         let pattern = pattern.finalize();
         
         let narg = [5u8, 0, 0, 0, b'a', b'b'];

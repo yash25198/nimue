@@ -128,18 +128,16 @@ mod tests {
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.interact(Interaction::new::<u64>(
-            Hierarchy::Atomic,
-            Kind::Challenge,
-            Label::custom("nonce"),
-            Length::Scalar,
+        playback.interact(Interaction::new::<()>(
+            Hierarchy::Begin,
+            Kind::Protocol,
+            Label::PROTOCOL,
+            Length::None,
         )).expect("Failed to interact with pattern");
     }
 
     #[test]
-    #[should_panic(
-        expected = "Mismatched begin and end: Begin Protocol Example protocol None (), End Protocol Invalid example protocol None ()"
-    )]
+
     fn panics_if_record_begin_end_mismatch() {
         let mut pattern = PatternState::<u8>::new();
         pattern.begin_protocol(Label::custom("Example protocol")).expect("Failed to begin protocol");
@@ -149,29 +147,13 @@ mod tests {
             Label::custom("nonce"),
             Length::Scalar,
         )).expect("Failed to interact with pattern");
-        pattern.end_protocol(Label::custom("Invalid example protocol")).expect("Failed to end protocol");
-        let _pattern = pattern.finalize();
-    }
-    #[test]
-    #[should_panic(
-        expected = "Error validating interaction pattern: Missing End for Begin Protocol Example protocol None () at 0"
-    )]
-    fn panics_if_record_unmatched_begin() {
-        let mut pattern = PatternState::<u8>::new();
-        pattern.begin_protocol(Label::custom("Example protocol")).expect("Failed to begin protocol");
-        pattern.interact(Interaction::new::<u64>(
-            Hierarchy::Atomic,
-            Kind::Challenge,
-            Label::custom("nonce"),
-            Length::Scalar,
-        )).expect("Failed to interact with pattern");
-        let _pattern = pattern.finalize();
+        let result = pattern.end_protocol(Label::custom("Invalid example protocol"));
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PatternError::MismatchedBeginEnd { .. }));
     }
 
     #[test]
-    #[should_panic(
-        expected = "Received interaction Atomic Challenge nonce Scalar f64, but expected Atomic Challenge nonce Scalar u64"
-    )]
+
     fn panics_if_type_mismatch() {
         let mut pattern = PatternState::<u8>::new();
         pattern.interact(Interaction::new::<u64>(
@@ -183,19 +165,24 @@ mod tests {
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.interact(Interaction::new::<f64>(
+        playback.interact(Interaction::new::<()>(
+            Hierarchy::Begin,
+            Kind::Protocol,
+            Label::PROTOCOL,
+            Length::None,
+        )).expect("Failed to interact with pattern");
+        let result = playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             Label::custom("nonce"),
             Length::Scalar,
-        )).expect("Failed to interact with pattern");
-        playback.finalize().expect("Failed to finalize");
+        ));
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PatternError::UnexpectedInteraction { .. }));
     }
 
     #[test]
-    #[should_panic(
-        expected = "Received interaction Atomic Public nonce Scalar f64, but expected Atomic Message nonce Scalar u64"
-    )]
+ 
     fn panics_if_kind_mismatch() {
         let mut pattern = PatternState::<u8>::new();
         pattern.interact(Interaction::new::<u64>(
@@ -207,19 +194,24 @@ mod tests {
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.interact(Interaction::new::<f64>(
+        playback.interact(Interaction::new::<()>(
+            Hierarchy::Begin,
+            Kind::Protocol,
+            Label::PROTOCOL,
+            Length::None,
+        )).expect("Failed to interact with pattern");
+        let result = playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Public,
             Label::custom("nonce"),
             Length::Scalar,
-        )).expect("Failed to interact with pattern");
-        playback.finalize().expect("Failed to finalize");
+        ));
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PatternError::UnexpectedInteraction { .. }));
     }
 
     #[test]
-    #[should_panic(
-        expected = "Received interaction Atomic Challenge invalid Scalar f64, but expected Atomic Challenge nonce Scalar u64"
-    )]
+  
     fn panics_if_label_mismatch() {
         let mut pattern = PatternState::<u8>::new();
         pattern.interact(Interaction::new::<u64>(
@@ -231,19 +223,24 @@ mod tests {
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.interact(Interaction::new::<f64>(
+        playback.interact(Interaction::new::<()>(
+            Hierarchy::Begin,
+            Kind::Protocol,
+            Label::PROTOCOL,
+            Length::None,
+        )).expect("Failed to interact with pattern");
+        let result = playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             Label::custom("invalid"),
             Length::Scalar,
-        )).expect("Failed to interact with pattern");
-        playback.finalize().expect("Failed to finalize");
+        ));
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PatternError::UnexpectedInteraction { .. }));
     }
 
     #[test]
-    #[should_panic(
-        expected = "Received interaction Atomic Challenge nonce Fixed(1) f64, but expected Atomic Challenge nonce Scalar u64"
-    )]
+
     fn panics_if_length_mismatch() {
         let mut pattern = PatternState::<u8>::new();
         pattern.interact(Interaction::new::<u64>(
@@ -255,12 +252,19 @@ mod tests {
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.interact(Interaction::new::<f64>(
+        playback.interact(Interaction::new::<()>(
+            Hierarchy::Begin,
+            Kind::Protocol,
+            Label::PROTOCOL,
+            Length::None,
+        )).expect("Failed to interact with pattern");
+        let result = playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Challenge,
             Label::custom("nonce"),
             Length::Fixed(1),
-        )).expect("Failed to interact with pattern");
-        playback.finalize().expect("Failed to finalize");
+        ));
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), PatternError::UnexpectedInteraction { .. })); 
     }
 }

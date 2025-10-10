@@ -211,7 +211,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        codecs::arkworks_algebra::{FieldPattern, GroupPattern, GroupToUnitDeserialize, ProverFieldMessageExt, ProverGroupMessageExt, VerifierFieldMessageExt, VerifierGroupMessageExt},
+        codecs::arkworks_algebra::{FieldPattern, GroupPattern, ProverFieldMessageExt, ProverGroupMessageExt, VerifierFieldMessageExt, VerifierGroupMessageExt},
         pattern::{Label, PatternState},
         DefaultHash, 
         ProverState,

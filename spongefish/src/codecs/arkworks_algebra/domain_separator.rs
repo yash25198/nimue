@@ -124,6 +124,7 @@ mod tests {
     pub type BabyBear = Fp64<MontBackend<BabybearConfig, 1>>;
 
     /// Quadratic extension field over BabyBear.
+    #[allow(dead_code)]
     pub type BabyBear2 = Fp2<F2Config64>;
 
     /// Configuration for the quadratic extension BabyBear2.
@@ -140,6 +141,7 @@ mod tests {
     }
 
     /// Quartic extension field over BabyBear using nested Fp2 extensions.
+    #[allow(dead_code)]
     pub type BabyBear4 = Fp4<F4Config64>;
 
     /// Configuration for the quartic extension BabyBear4.
