@@ -5,7 +5,7 @@ use super::{CommonFieldToUnit, CommonGroupToUnit, FieldToUnitSerialize, GroupToU
 use crate::codecs::bytes_uniform_modp;
 use crate::pattern::Length;
 use crate::{
-    pattern::{Label, Kind, PatternError,Pattern}, 
+    pattern::{Label, PatternError,Pattern}, 
     BytesToUnitSerialize, CommonUnitToBytes, DuplexSpongeInterface, ProverState, UnitTranscript
 };
 
@@ -312,159 +312,187 @@ where
         self.fill_challenge_units(label, output)
     }
 }
+#[cfg(test)]
+mod tests {
+    use ark_bls12_381::Fr;
+    use ark_curve25519::EdwardsProjective;
+    use ark_ec::PrimeGroup;
+    use ark_ff::{Fp64, MontBackend, MontConfig, UniformRand};
+    use std::sync::Arc;
+    
+    use super::*;
+    use crate::{
+        codecs::{
+            arkworks_algebra::{
+                 FieldPattern,  GroupPattern, ProverFieldMessageExt, ProverGroupMessageExt, VerifierFieldMessageExt
+            },
+            bytes::Pattern as BytesPattern,
 
-// #[cfg(test)]
-// mod tests {
-//     use ark_bls12_381::Fr;
-//     use ark_curve25519::EdwardsProjective;
-//     use ark_ec::PrimeGroup;
-//     use ark_ff::{Fp64, MontBackend, MontConfig, UniformRand};
-//     use std::sync::Arc;
-//     use ark_serialize::CanonicalSerialize;
-//     use super::*;
-//     use crate::{
-//         codecs::{
-//             arkworks_algebra::{
-//                 FieldPattern, 
-//                 FieldToUnitSerialize, 
-//                 GroupPattern, 
-//                 GroupToUnitSerialize,
-//                 CommonFieldToUnit,
-//                 CommonGroupToUnit,
-//             },
-//             bytes::Pattern as BytesPattern,
-//             unit::Pattern as UnitPattern,
-//         },
-//         pattern::{PatternState, Pattern as _, Label, Interaction, Hierarchy, Kind, Length},
-//         DefaultHash, 
-//         ProverState,
-//         VerifierState,
-//         BytesToUnitSerialize,
-//         BytesToUnitDeserialize,
-//     };
+        }, 
+        pattern::{ PatternState}, DefaultHash, ProverState, VerifierState
+    };
 
-//     type G = EdwardsProjective;
+    type G = EdwardsProjective;
 
-//     #[derive(MontConfig)]
-//     #[modulus = "2013265921"]
-//     #[generator = "21"]
-//     pub struct BabybearConfig;
+    #[derive(MontConfig)]
+    #[modulus = "2013265921"]
+    #[generator = "21"]
+    pub struct BabybearConfig;
 
-//     pub type BabyBear = Fp64<MontBackend<BabybearConfig, 1>>;
+    pub type BabyBear = Fp64<MontBackend<BabybearConfig, 1>>;
 
-//     #[test]
-//     fn test_add_scalars() {
-//         // Sample 3 random BabyBear field elements
-//         let mut rng = ark_std::test_rng();
-//         let (f0, f1, f2) = (
-//             BabyBear::rand(&mut rng),
-//             BabyBear::rand(&mut rng),
-//             BabyBear::rand(&mut rng),
-//         );
+    #[test]
+    fn test_add_scalars_with_proper_pattern() {
+        let mut rng = ark_std::test_rng();
+        let scalars = [
+            BabyBear::rand(&mut rng),
+            BabyBear::rand(&mut rng),
+            BabyBear::rand(&mut rng),
+        ];
 
-//         // Create a simple pattern without hierarchical structure
-//         let pattern = Arc::new(PatternState::<u8>::new().finalize());
+        // Create proper pattern with field message
+        let mut pattern = PatternState::<u8>::new();
+        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
+            &mut pattern, 
+            Label::custom("scalars"), 
+            3
+        ).unwrap();
+        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
-//         // Create prover state
-//         let mut prover_state = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
-
-//         // Try to add the scalars - this should fail with the current pattern
-//         let result = prover_state.add_scalars(Label::custom("com"), &[f0, f1, f2]);
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
         
-//         // We expect this to fail because the pattern doesn't have the right interactions
-//         assert!(result.is_err(), "Expected error due to pattern mismatch");
+        // Use the extension trait for convenience
+        assert!(prover.add_message_scalars(Label::custom("scalars"), &scalars).is_ok());
         
-//         prover_state.abort().expect("Failed to abort");
-//     }
+        prover.finalize().unwrap();
+    }
 
-//     #[test]
-//     fn test_add_scalars_u8_unit() {
-//         // Create a simple pattern without hierarchical structure
-//         let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
+    #[test]
+    fn test_add_scalars_pattern_mismatch() {
+        let mut rng = ark_std::test_rng();
+        let scalars = [
+            BabyBear::rand(&mut rng),
+            BabyBear::rand(&mut rng),
+            BabyBear::rand(&mut rng),
+        ];
 
-//         // Create prover state
-//         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
+        // Empty pattern - should fail
+        let pattern = Arc::new(PatternState::<u8>::new().finalize().expect("Failed to finalize pattern"));
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-//         // Use two deterministic values for test
-//         let f0 = Fr::from(5u64);
-//         let f1 = Fr::from(42u64);
-
-//         // Try to add the scalars - this should fail with the current pattern
-//         let result = prover.add_scalars(Label::custom("com"), &[f0, f1]);
+        let result = prover.add_message_scalars(Label::custom("scalars"), &scalars);
+        assert!(result.is_err(), "Expected error due to pattern mismatch");
         
-//         // We expect this to fail because the pattern doesn't have the right interactions
-//         assert!(result.is_err(), "Expected error due to pattern mismatch");
+        prover.abort().unwrap();
+    }
+
+    #[test]
+    fn test_add_scalars_u8_unit() {
+        let f0 = Fr::from(5u64);
+        let f1 = Fr::from(42u64);
+
+        // Create proper pattern
+        let mut pattern = PatternState::<u8>::new();
+        <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
+            &mut pattern,
+            Label::custom("fr_scalars"),
+            2
+        ).unwrap();
+        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        assert!(prover.add_message_scalars(Label::custom("fr_scalars"), &[f0, f1]).is_ok());
         
-//         prover.abort().expect("Failed to abort");
-//     }
+        prover.finalize().unwrap();
+    }
 
-//     #[test]
-//     fn test_add_points_u8_unit() {
-//         // Create a simple pattern without hierarchical structure
-//         let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
+    #[test]
+    fn test_add_points_u8_unit() {
+        let point = G::generator();
 
-//         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
-//         let point = G::generator();
+        // Create proper pattern
+        let mut pattern = PatternState::<u8>::new();
+        <PatternState<u8> as GroupPattern<G>>::message_points(
+            &mut pattern,
+            Label::custom("point"),
+            1
+        ).unwrap();
+        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
-//         // Try to add the point - this should fail with the current pattern
-//         let result = prover.add_points(Label::custom("pt"), &[point]);
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        assert!(prover.add_message_points(Label::custom("point"), &[point]).is_ok());
         
-//         // We expect this to fail because the pattern doesn't have the right interactions
-//         assert!(result.is_err(), "Expected error due to pattern mismatch");
-        
-//         prover.abort().expect("Failed to abort");
-//     }
+        prover.finalize().unwrap();
+    }
 
-//     #[test]
-//     fn test_add_points_fp_unit() {
-//         // Create a simple pattern without hierarchical structure
-//         let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
+    #[test]
+    fn test_add_points_pattern_mismatch() {
+        let point = G::generator();
 
-//         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
-//         let point = G::generator();
+        // Empty pattern - should fail
+        let pattern = Arc::new(PatternState::<u8>::new().finalize().expect("Failed to finalize pattern"));
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-//         // Try to add the point - this should fail with the current pattern
-//         let result = prover.add_points(Label::custom("pt"), &[point]);
+        let result = prover.add_message_points(Label::custom("point"), &[point]);
+        assert!(result.is_err(), "Expected error due to pattern mismatch");
         
-//         // We expect this to fail because the pattern doesn't have the right interactions
-//         assert!(result.is_err(), "Expected error due to pattern mismatch");
-        
-//         prover.abort().expect("Failed to abort");
-//     }
+        prover.abort().unwrap();
+    }
 
-//     #[test]
-//     fn test_add_bytes_fp_unit() {
-//         let input = b"hello world!";
+    #[test]
+    fn test_add_bytes_with_pattern() {
+        let input = b"hello world!";
 
-//         // Create a simple pattern without hierarchical structure
-//         let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
+        // Create proper pattern
+        let mut pattern = PatternState::<u8>::new();
+        pattern.message_bytes(Label::BYTES, input.len()).unwrap();
+        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
-//         let mut prover = ProverState::<DefaultHash>::new(Arc::new(pattern), rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        assert!(prover.add_bytes(Label::BYTES, input).is_ok());
+        
+        prover.finalize().unwrap();
+    }
 
-//         // Try to add the bytes - this should fail with the current pattern
-//         let result = prover.add_bytes(Label::custom("com"), input);
-        
-//         // We expect this to fail because the pattern doesn't have the right interactions
-//         assert!(result.is_err(), "Expected error due to pattern mismatch");
-        
-//         prover.abort().expect("Failed to abort");
-//     }
+    #[test]
+    fn test_add_bytes_pattern_mismatch() {
+        let input = b"hello world!";
 
-//     #[test]
-//     fn test_fill_next_bytes_fp_unit() {
-//         let input = b"secret-msg";
+        // Empty pattern - should fail
+        let pattern = Arc::new(PatternState::<u8>::new().finalize().expect("Failed to finalize pattern"));
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-//         // Create a simple pattern without hierarchical structure
-//         let pattern = Arc::new(PatternState::<u8>::new().finalize());
+        let result = prover.add_bytes(Label::BYTES, input);
+        assert!(result.is_err(), "Expected error due to pattern mismatch");
         
-//         let mut prover = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+        prover.abort().unwrap();
+    }
+
+    #[test]
+    fn test_roundtrip_with_verifier() {
+        let mut rng = ark_std::test_rng();
+        let scalars = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
+
+        // Create pattern
+        let mut pattern = PatternState::<u8>::new();
+        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
+            &mut pattern,
+            Label::custom("data"),
+            2
+        ).unwrap();
+        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+
+        // Prover
+        let mut prover = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+        prover.add_message_scalars(Label::custom("data"), &scalars).unwrap();
+        let proof = prover.finalize().unwrap();
+
+        // Verifier
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
+        let mut received = [BabyBear::from(0u64); 2];
+        verifier.read_message_scalars(Label::custom("data"), &mut received).unwrap();
         
-//         // Try to add the bytes - this should fail with the current pattern
-//         let result = prover.add_bytes(Label::custom("msg"), input);
-        
-//         // We expect this to fail because the pattern doesn't have the right interactions
-//         assert!(result.is_err(), "Expected error due to pattern mismatch");
-        
-//         prover.abort().expect("Failed to abort");
-//     }
-// }
+        assert_eq!(scalars, received);
+        verifier.finalize().unwrap();
+    }
+}

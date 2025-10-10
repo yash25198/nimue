@@ -171,7 +171,7 @@ mod tests {
             FieldToUnitDeserialize,
             GroupToUnitDeserialize,
         },
-        pattern::{PatternState, Label},
+        pattern::{PatternState},
         DefaultHash,
         VerifierState,
     };
