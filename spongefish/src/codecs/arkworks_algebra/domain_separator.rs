@@ -175,7 +175,7 @@ mod tests {
         }
         let mut pattern = PatternState::<u8>::new();
         add_schnorr_domain_separator::<_, ark_curve25519::EdwardsProjective>(&mut pattern);
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         assert_eq!(
             format!("{pattern}"),

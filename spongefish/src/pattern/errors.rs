@@ -28,4 +28,6 @@ pub enum PatternError {
     IoError(std::io::Error),
     #[error("Size error: {0}")]
     SizeError(String),
+    #[error("Transcript error: {0}")]
+    TranscriptError(String),
 }

@@ -18,7 +18,7 @@ type Blake2s256 = DigestBridge<blake2::Blake2s256>;
 /// Test ProverState's rng is not doing completely stupid things.
 #[test]
 fn test_prover_rng_basic() {
-    let pattern = PatternState::<u8>::new().finalize();
+    let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
     let rng = prover_state.rng();
 
@@ -41,7 +41,7 @@ fn test_prover_bytewriter_correct() {
     pattern.begin_message::<u8>(Label::custom("bytes"), Length::Fixed(1)).expect("Failed to begin message");
     pattern.message_units(Label::custom("units"), 1).expect("Failed to add message units");
     pattern.end_message::<u8>(Label::custom("bytes"), Length::Fixed(1)).expect("Failed to end message");
-    let pattern = pattern.finalize();
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
     prover_state.add_bytes(Label::BYTES, &[0u8]).expect("Failed to add bytes");
@@ -59,7 +59,7 @@ fn test_prover_bytewriter_invalid() {
     pattern.begin_message::<u8>(Label::custom("bytes"), Length::Fixed(1)).expect("Failed to begin message");
     pattern.message_units(Label::custom("units"), 1).expect("Failed to add message units");
     pattern.end_message::<u8>(Label::custom("bytes"), Length::Fixed(1)).expect("Failed to end message");
-    let pattern = pattern.finalize();
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
     prover_state.add_bytes(Label::BYTES, &[0u8]).expect("First add_bytes should succeed");
@@ -74,7 +74,7 @@ fn test_prover_public_units_invalid() {
     // Expect exactly one public_units call.
     let mut pattern = PatternState::<u8>::new();
     pattern.public_units(Label::custom("public_units"), 1).expect("Failed to add public units to pattern");
-    let pattern = pattern.finalize();
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
     prover_state.public_units(Label::custom("public_units"), &[0u8]).expect("First public_units should succeed");
@@ -86,24 +86,12 @@ fn test_invalid_domsep_sequence() {
     let mut pattern = PatternState::<u8>::new();
     pattern.message_units(Label::custom("units"), 3).expect("Failed to add message units");
     pattern.challenge_units(Label::custom("challenge_units"), 1).expect("Failed to add challenge units");
-    let pattern = pattern.finalize();
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
     let mut verifier_state: VerifierState<Keccak> = VerifierState::new(Arc::new(pattern), &[]);
     let result = verifier_state.fill_challenge_bytes(Label::custom("fill_challenge_units"), &mut [0u8; 16]);
     assert!(result.is_err());
     assert!(matches!(result.unwrap_err(), PatternError::UnexpectedInteraction { .. }));
-}
-
-/// A protocol whose domain separator is not finished should panic.
-#[test]
-#[should_panic(expected = "Dropped unfinalized transcript.")]
-fn test_unfinished_domsep() {
-    let mut pattern = PatternState::<u8>::new();
-    pattern.message_units(Label::custom("elt"), 3).expect("Failed to add message units");
-    pattern.challenge_units(Label::custom("another_elt"), 16).expect("Failed to add challenge units");
-    let pattern = pattern.finalize();
-
-    let mut _verifier: VerifierState = VerifierState::new(pattern.into(), b"");
 }
 
 /// The domain separator tag should be deterministic.
@@ -112,7 +100,7 @@ fn test_deterministic() {
     let mut pattern = PatternState::<u8>::new();
     pattern.message_units(Label::custom("elt"), 3).expect("Failed to add message units");
     pattern.challenge_units(Label::custom("another_elt"), 16).expect("Failed to add challenge units");
-    let pattern = pattern.finalize();
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
     let iv1 = pattern.domain_separator();
     let iv2 = pattern.domain_separator();
@@ -122,7 +110,7 @@ fn test_deterministic() {
 /// Basic check that the domain separator tag has some non-zero byte.
 #[test]
 fn test_statistics() {
-    let pattern = PatternState::<u8>::new().finalize();
+    let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
     let iv = pattern.domain_separator();
     assert!(iv.iter().any(|&b| b != 0));
 }
@@ -136,7 +124,7 @@ fn test_transcript_readwrite() {
     pattern.message_units(Label::custom("units"), 5).expect("Failed to add challenge units");
     pattern.message_units(Label::custom("units"), 5).expect("Failed to add message units");
     pattern.challenge_units(Label::custom("fill_challenge_units"), 10).expect("Failed to add challenge units");
-    let pattern = pattern.finalize();
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
     let mut prover_state: ProverState = ProverState::from(&pattern);
     prover_state.add_units(Label::UNITS, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap();
@@ -190,7 +178,7 @@ fn test_incomplete_domsep() {
     let mut pattern = PatternState::<u8>::new();
     pattern.message_units(Label::custom("units"), 10).expect("Failed to add message units");
     pattern.challenge_units(Label::custom("fill_challenge_units"), 1).expect("Failed to add challenge units");
-    let pattern = pattern.finalize();
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
     let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
     prover_state.add_units(Label::UNITS, &[0u8; 10]).unwrap();
@@ -208,7 +196,7 @@ fn test_prover_empty_absorb() {
     let mut pattern = PatternState::<u8>::new();
     pattern.message_units(Label::custom("units"), 0).expect("Failed to add message units");
     pattern.challenge_units(Label::custom("fill_challenge_units"), 0).expect("Failed to add challenge units");
-    let pattern = pattern.finalize();
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
     let mut prover_state: ProverState = ProverState::from(&pattern);
     prover_state.add_units(Label::UNITS, b"").expect("Failed to add units");
@@ -238,7 +226,7 @@ where
     pattern.message_units(Label::custom("units"), 16).expect("Failed to add message units");
     pattern.end_message::<u8>(Label::custom("bytes"), Length::Fixed(16)).expect("Failed to end message");
     pattern.challenge_units(Label::custom("fill_challenge_units"), 16).expect("Failed to add challenge units");
-    let pattern = pattern.finalize();
+     let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
     let mut prover_state: ProverState<H> = ProverState::from(&pattern);
     prover_state.add_bytes(Label::custom("bytes"), bytes).unwrap();

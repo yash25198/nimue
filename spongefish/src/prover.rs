@@ -122,10 +122,15 @@ where
         
         // Handle the automatic protocol wrapping that PatternState::finalize() adds
         // The pattern starts with Begin Protocol, so we need to consume it
-        if pattern.interactions().first()
-            .map(|i| i.hierarchy() == crate::pattern::Hierarchy::Begin && i.kind() == Kind::Protocol && *i.label() == Label::PROTOCOL)
-            .unwrap_or(false)
-        {
+        // Cache the interactions slice to avoid repeated Arc dereferences
+        let interactions = pattern.interactions();
+        let has_protocol_wrapper = interactions.first()
+            .map(|i| i.hierarchy() == crate::pattern::Hierarchy::Begin 
+                  && i.kind() == Kind::Protocol 
+                  && *i.label() == Label::PROTOCOL)
+            .unwrap_or(false);
+        
+        if has_protocol_wrapper {
             if let Err(e) = state.pattern.begin::<()>(Label::PROTOCOL, Kind::Protocol, Length::None) {
                 // If we fail to begin, mark as finalized to avoid panic in Drop
                 let _ = state.pattern.abort();
@@ -237,11 +242,16 @@ where
     pub fn finalize(mut self) -> Result<Vec<u8>, PatternError> {
         // Handle the automatic protocol wrapping that PatternState::finalize() adds
         // The pattern ends with End Protocol, so we need to consume it
-        let arc_pattern = self.pattern.pattern().clone();
-        if arc_pattern.interactions().last()
-            .map(|i| i.hierarchy() == Hierarchy::End && i.kind() == Kind::Protocol && *i.label() == Label::PROTOCOL)
-            .unwrap_or(false)
-        {
+        // Cache the pattern reference and interactions to avoid repeated Arc operations
+        let arc_pattern = self.pattern.pattern();
+        let interactions = arc_pattern.interactions();
+        let has_protocol_end = interactions.last()
+            .map(|i| i.hierarchy() == Hierarchy::End 
+                  && i.kind() == Kind::Protocol 
+                  && *i.label() == Label::PROTOCOL)
+            .unwrap_or(false);
+        
+        if has_protocol_end {
             self.pattern.end::<()>(Label::PROTOCOL, Kind::Protocol, Length::None)?;
         }
         
@@ -385,7 +395,7 @@ mod tests {
     fn test_prover_state_add_units_and_rng_differs() {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_bytes(Label::BYTES, 4).expect("Failed to add message bytes");
-        let pattern = pattern.finalize();
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut pstate: ProverState = ProverState::from(&pattern);
 
@@ -401,7 +411,7 @@ mod tests {
     fn test_prover_state_public_units_does_not_affect_narg() {
         let mut pattern = PatternState::<u8>::new();
         pattern.public_units(Label::custom("public_units"), 4).expect("Failed to add public units to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
         let mut pstate: ProverState = ProverState::from(&pattern);
 
         pstate.public_units(Label::custom("public_units"), &[1, 2, 3, 4]).expect("Failed to add public units");
@@ -413,7 +423,7 @@ mod tests {
     fn test_prover_state_ratcheting_changes_rng_output() {
         let mut pattern = PatternState::<u8>::new();
         pattern.ratchet().expect("Failed to add ratchet to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         let mut buf1 = [0u8; 4];
@@ -431,7 +441,7 @@ mod tests {
     fn test_add_units_appends_to_narg_string() {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_units(Label::UNITS, 3).expect("Failed to add message units to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
         let mut pstate: ProverState = ProverState::from(&pattern);
 
         let input = [42, 43, 44];
@@ -448,7 +458,7 @@ mod tests {
     fn test_add_units_too_many_elements_should_panic() {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_units(Label::UNITS, 2).expect("Failed to add message units to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         pstate.add_units(Label::UNITS, &[1, 2, 3]).expect("Failed to add units");
@@ -458,7 +468,7 @@ mod tests {
     fn test_ratchet_works_when_expected() {
         let mut pattern = PatternState::<u8>::new();
         pattern.ratchet().expect("Failed to add ratchet to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         pstate.ratchet().expect("Failed to ratchet");
@@ -472,7 +482,7 @@ mod tests {
     fn test_ratchet_fails_when_not_expected() {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_units(Label::UNITS, 4).expect("Failed to add message units to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         pstate.ratchet().expect("Failed to ratchet");
@@ -485,7 +495,7 @@ mod tests {
         pattern.begin_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8)).expect("Failed to begin challenge");
         pattern.challenge_units(Label::UNITS, 8).expect("Failed to add challenge units to pattern");
         pattern.end_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8)).expect("Failed to end challenge");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         let mut out = [0u8; 8];
@@ -499,7 +509,7 @@ mod tests {
     fn test_rng_entropy_changes_with_transcript() {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_bytes(Label::BYTES, 3).expect("Failed to add message bytes");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut p1: ProverState = ProverState::from(&pattern);
         let mut p2: ProverState = ProverState::from(&pattern);
@@ -521,7 +531,7 @@ mod tests {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_units(Label::UNITS, 2).expect("Failed to add message units to pattern");
         pattern.message_units(Label::UNITS, 3).expect("Failed to add message units to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut p: ProverState = ProverState::from(&pattern);
         p.add_units(Label::UNITS, &[10, 11]).expect("Failed to add units");
@@ -533,7 +543,7 @@ mod tests {
     fn test_narg_string_round_trip_check() {
         let mut pattern = PatternState::<u8>::new();
         pattern.message_units(Label::UNITS, 5).expect("Failed to add message units to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut p: ProverState = ProverState::from(&pattern);
         let msg = b"zkp42";
@@ -545,7 +555,7 @@ mod tests {
     fn test_hint_bytes_appends_hint_length_and_data() {
         let mut pattern = PatternState::<u8>::new();
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes")).expect("Failed to add hint bytes to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover: ProverState = ProverState::from(&pattern);
         let hint = b"abc123";
@@ -558,7 +568,7 @@ mod tests {
     fn test_hint_bytes_empty_hint_is_encoded_correctly() {
         let mut pattern = PatternState::<u8>::new();
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes")).expect("Failed to add hint bytes to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover: ProverState = ProverState::from(&pattern);
         prover.hint_bytes(Label::custom("hint_bytes"), b"").expect("Failed to add hint bytes");
@@ -567,7 +577,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_fails_if_hint_op_missing() {
-        let pattern = PatternState::<u8>::new().finalize();
+        let pattern = PatternState::<u8>::new().finalize().expect("Failed to finalize pattern");
 
         let mut prover: ProverState = ProverState::from(&pattern);
         // indicate a hint without a matching hint_bytes interaction - this should fail
@@ -581,7 +591,7 @@ mod tests {
     fn test_hint_bytes_is_deterministic() {
         let mut pattern = PatternState::<u8>::new();
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes")).expect("Failed to add hint bytes to pattern");
-        let pattern = pattern.finalize();
+         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let hint = b"zkproof_hint";
         let mut prover1: ProverState = ProverState::from(&pattern);

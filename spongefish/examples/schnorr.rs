@@ -137,7 +137,7 @@ fn main() {
     type G = ark_curve25519::EdwardsProjective;
 
     // Step 1: Create and finalize the interaction pattern
-    let pattern = Arc::new(schnorr_pattern::<G>().finalize());
+    let pattern = Arc::new(schnorr_pattern::<G>().finalize().expect("Failed to finalize pattern"));
     println!("✓ Pattern created and finalized");
 
     // Step 2: Setup - generate keys
@@ -147,7 +147,7 @@ fn main() {
 
     // Step 3: Prover generates proof - CLEAN API WITH EXTENSION TRAITS!
     let proof = {
-        let mut prover = ProverState::new(pattern.clone(), OsRng);
+        let mut prover = ProverState::new(pattern.clone(), OsRng).expect("Failed to create prover");
         
         prover.begin_protocol(Label::from("schnorr"))
             .expect("Failed to begin protocol")

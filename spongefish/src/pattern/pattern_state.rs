@@ -26,6 +26,7 @@ impl<U> PatternState<U>
 where
     U: Unit,
 {
+    /// Maximum nesting depth for hierarchical interactions.
     const MAX_NESTING_DEPTH: usize = 64;
     #[must_use]
     pub const fn new() -> Self {
@@ -37,13 +38,39 @@ where
         }
     }
 
-    #[must_use]
-    pub fn finalize(mut self) -> InteractionPattern {
-        assert!(!self.finalized, "Transcript is already finalized.");
-        assert!(
-            self.hierarchy_stack.is_empty(),
-            "Unclosed hierarchical interactions remain"
-        );
+    /// Finalize the pattern state into an immutable [`InteractionPattern`].
+    ///
+    /// This method consumes the `PatternState` and produces a validated [`InteractionPattern`]
+    /// that can be used by both prover and verifier. It automatically wraps the interactions
+    /// in a protocol begin/end if not already wrapped.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The pattern is already finalized
+    /// - There are unclosed hierarchical interactions (unmatched begin/end pairs)
+    /// - The interaction pattern validation fails
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut pattern = PatternState::<u8>::new();
+    /// pattern.message_bytes(Label::custom("msg"), 32)?;
+    /// let pattern = pattern.finalize()?;
+    /// ```
+    pub fn finalize(mut self) -> Result<InteractionPattern, PatternError> {
+        if self.finalized {
+            return Err(PatternError::AlreadyFinalized);
+        }
+        
+        if !self.hierarchy_stack.is_empty() {
+            return Err(PatternError::MismatchedBeginEnd { 
+                begin: self.interactions[*self.hierarchy_stack.last().unwrap()].clone(), 
+                end: self.interactions.last().cloned().unwrap_or_else(|| {
+                    Interaction::new::<()>(Hierarchy::End, Kind::Protocol, Label::PROTOCOL, Length::None)
+                })
+            });
+        }
         
         // Check if the pattern already has a protocol Begin/End at the top level
         let has_protocol_wrapper = self.interactions.first()
@@ -73,8 +100,8 @@ where
         }
         
         match InteractionPattern::new(self.interactions) {
-            Ok(transcript) => transcript,
-            Err(e) => panic!("Error validating interaction pattern: {e}"),
+            Ok(transcript) => Ok(transcript),
+            Err(e) => Err(PatternError::TranscriptError(e.to_string())),
         }
     }
 
