@@ -13,7 +13,8 @@ use spongefish::{
     codecs::{
         arkworks_algebra::{
             FieldPattern, FieldToUnitDeserialize, FieldToUnitSerialize, GroupPattern,
-            GroupToUnitDeserialize, GroupToUnitSerialize, UnitToField,
+            GroupToUnitDeserialize, GroupToUnitSerialize, ProverFieldMessageExt,
+            ProverGroupMessageExt, UnitToField, VerifierFieldMessageExt, VerifierGroupMessageExt,
         },
         unit::Pattern as _,
     },
@@ -75,7 +76,7 @@ where
 
     if witness.0.len() == 1 {
         assert_eq!(generators.0.len(), 1);
-        prover.add_scalars(Label::custom("final"), &[witness.0[0], witness.1[0]])?;
+        prover.message_scalars(Label::custom("final"), &[witness.0[0], witness.1[0]])?;
         return Ok(());
     }
 
@@ -94,10 +95,10 @@ where
         + G::msm_unchecked(g_left, a_right)
         + G::msm_unchecked(h_right, b_left);
 
-    prover.add_points(Label::custom("round"), &[left, right])?;
+    prover.message_points(Label::custom("round"), &[left, right])?;
 
     let x = G::ScalarField::rand(prover.rng());
-    prover.add_scalars(Label::custom("challenge"), &[x])?;
+    prover.message_scalars(Label::custom("challenge"), &[x])?;
     let x_inv = x.inverse().expect("Challenge inverse failed");
 
     let new_g = fold_generators(g_left, g_right, &x_inv, &x);
@@ -138,7 +139,7 @@ where
 
     while n != 1 {
         let mut lr_buf = [G::default(); 2];
-        verifier.fill_next_points(Label::custom("round"), &mut lr_buf)?;
+        verifier.fill_message_points(Label::custom("round"), &mut lr_buf)?;
         let [left, right] = lr_buf;
 
         n /= 2;
@@ -146,7 +147,7 @@ where
         let (h_left, h_right) = h.split_at(n);
 
         let mut x_buf = [G::ScalarField::default(); 1];
-        verifier.fill_next_scalars(Label::custom("challenge"), &mut x_buf)?;
+        verifier.fill_message_scalars(Label::custom("challenge"), &mut x_buf)?;
         let x = x_buf[0];
         let x_inv = x.inverse().expect("Challenge inverse failed");
 
@@ -156,7 +157,7 @@ where
     }
 
     let mut ab_buf = [G::ScalarField::default(); 2];
-    verifier.fill_next_scalars(Label::custom("final"), &mut ab_buf)?;
+    verifier.fill_message_scalars(Label::custom("final"), &mut ab_buf)?;
     let [a, b] = ab_buf;
 
     let c = a * b;
@@ -202,7 +203,11 @@ fn main() {
 
     // Create interaction pattern
     let pattern = Arc::new(bulletproof_pattern::<G>(size));
-    let pattern = Arc::new(<PatternState as Clone>::clone(&pattern).finalize());
+    let pattern = Arc::new(
+        <PatternState as Clone>::clone(&pattern)
+            .finalize()
+            .expect("Failed to finalize pattern"),
+    );
 
     // Test vectors
     let a = (0..size).map(|x| F::from(x as u32)).collect::<Vec<_>>();
@@ -229,7 +234,7 @@ fn main() {
     prover
         .begin_protocol(Label::custom("bulletproof"))
         .expect("Failed to begin protocol")
-        .add_points(Label::custom("commitment"), &[statement])
+        .message_points(Label::custom("commitment"), &[statement])
         .expect("Failed to add commitment")
         .ratchet()
         .expect("Failed to ratchet");
@@ -254,7 +259,7 @@ fn main() {
     verifier
         .begin_protocol(Label::custom("bulletproof"))
         .expect("Failed to begin protocol")
-        .fill_next_points(Label::custom("commitment"), &mut commitment)
+        .fill_message_points(Label::custom("commitment"), &mut commitment)
         .expect("Failed to read commitment")
         .ratchet()
         .expect("Ratchet failed");
