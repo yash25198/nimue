@@ -224,6 +224,7 @@ pub use Pattern as Prover;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
     #[test]
     fn test_record_playback() {
@@ -246,7 +247,7 @@ mod tests {
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         // Play it back exactly
-        let mut playback = PatternPlayer::new(pattern.into());
+        let mut playback = PatternPlayer::new(Arc::new(pattern));
         playback
             .begin_protocol(Label::custom("Example protocol"))
             .expect("Failed to begin protocol");
@@ -278,7 +279,7 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(pattern.into());
+        let mut playback = PatternPlayer::new(Arc::new(pattern));
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
@@ -326,7 +327,7 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(pattern.into());
+        let mut playback = PatternPlayer::new(Arc::new(pattern));
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
@@ -362,7 +363,7 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(pattern.into());
+        let mut playback = PatternPlayer::new(Arc::new(pattern));
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
@@ -398,7 +399,7 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(pattern.into());
+        let mut playback = PatternPlayer::new(Arc::new(pattern));
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
@@ -434,7 +435,7 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(pattern.into());
+        let mut playback = PatternPlayer::new(Arc::new(pattern));
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
