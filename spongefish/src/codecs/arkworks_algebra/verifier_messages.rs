@@ -241,7 +241,6 @@ mod tests {
 
     /// Base field type using the BabyBear configuration.
     pub type BabyBear = Fp64<MontBackend<BabybearConfig, 1>>;
-
     #[test]
     fn test_unit_write_read_babybear_roundtrip() {
         let mut rng = ark_std::test_rng();
@@ -258,7 +257,6 @@ mod tests {
         // Round-trip check
         assert_eq!(values, decoded, "Unit read/write roundtrip failed");
     }
-
     #[test]
     fn test_common_field_to_unit_bytes() {
         let mut rng = ark_std::test_rng();
@@ -277,6 +275,14 @@ mod tests {
         let mut prover =
             ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
         let _ = prover.message_scalars(Label::from("tag"), &values);
+
+        // Verify narg_string
+        let mut expected_bytes = Vec::new();
+        for v in &values {
+            v.serialize_compressed(&mut expected_bytes).unwrap();
+        }
+        assert_eq!(prover.narg_string(), expected_bytes);
+
         let proof = prover.finalize().unwrap();
 
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
@@ -296,9 +302,6 @@ mod tests {
         // Generator of the curve group
         let point = Curve::generator();
 
-        // Test that group element serialization is consistent.
-        // This is a simple serialization test, not a full protocol test.
-
         // Manual serialization for comparison
         let mut expected = Vec::new();
         point.serialize_compressed(&mut expected).unwrap();
@@ -315,6 +318,10 @@ mod tests {
         let mut prover =
             ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
         let _ = prover.message_points(Label::custom("generator"), &[point]);
+
+        // Verify narg_string matches expected serialization
+        assert_eq!(prover.narg_string(), expected);
+
         let proof = prover.finalize().unwrap();
 
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
@@ -345,7 +352,7 @@ mod tests {
 
     #[test]
     fn test_unit_to_field_fill_challenge_scalars_u8() {
-        // Create a pattern with a challenge scalar
+        // Create a pattern with a message scalar (not challenge)
         let mut pattern = PatternState::<u8>::new();
         <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
             &mut pattern,
@@ -362,7 +369,12 @@ mod tests {
             .message_scalars(Label::from("tag"), &mut out)
             .unwrap();
 
-        // Finalize the prover to avoid panic on drop
+        // Verify narg_string
+        let mut expected = Vec::new();
+        BabyBear::ONE.serialize_compressed(&mut expected).unwrap();
+        assert_eq!(prover.narg_string(), expected);
+
+        // Finalize the prover to get the proof
         let proof = prover.finalize().unwrap();
 
         let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
@@ -373,7 +385,7 @@ mod tests {
             .unwrap();
         verifier.finalize().unwrap();
 
-        assert_eq!(out[0], BabyBear::ONE, "Challenge should be zero");
+        assert_eq!(out[0], BabyBear::ONE, "Scalar should be ONE");
     }
 
     #[test]
