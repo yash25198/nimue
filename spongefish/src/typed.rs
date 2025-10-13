@@ -188,7 +188,9 @@ where
 
     /// Finalize the verifier
     pub fn finalize(self) -> crate::ProofResult<()> {
-        self.inner.finalize().map_err(|e| crate::ProofError::PatternError(e.to_string()))
+        self.inner
+            .finalize()
+            .map_err(|e| crate::ProofError::PatternError(e.to_string()))
     }
 }
 
@@ -223,7 +225,7 @@ macro_rules! define_protocol {
 
     // Recursive: generate free functions for Prover
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*]) => { $($acc)* };
-    
+
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_units $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, input: &[U]) -> $crate::typed::Prover<$Name, $method, H, U, R>
         where
@@ -237,7 +239,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (challenge_units $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, output: &mut [U]) -> $crate::typed::Prover<$Name, $method, H, U, R>
         where
@@ -251,7 +253,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (ratchet $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>) -> $crate::typed::Prover<$Name, $method, H, U, R>
         where
@@ -264,7 +266,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_points $method:ident $label:literal) $($tail:tt)*) => {
         #[cfg(feature = "arkworks-algebra")]
         pub fn $method<G, H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, input: &[G]) -> $crate::typed::Prover<$Name, $method, H, U, R>
@@ -282,7 +284,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (challenge_scalars $method:ident $label:literal) $($tail:tt)*) => {
         #[cfg(feature = "arkworks-algebra")]
         pub fn $method<F, H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, output: &mut [F]) -> $crate::typed::Prover<$Name, $method, H, U, R>
@@ -299,7 +301,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_prover_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_scalars $method:ident $label:literal) $($tail:tt)*) => {
         #[cfg(feature = "arkworks-algebra")]
         pub fn $method<F, H, U, R>(mut state: $crate::typed::Prover<$Name, $PrevState, H, U, R>, input: &[F]) -> $crate::typed::Prover<$Name, $method, H, U, R>
@@ -320,7 +322,7 @@ macro_rules! define_protocol {
 
     // Recursive: generate free functions for Verifier
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*]) => { $($acc)* };
-    
+
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_units $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<'a, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [U]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
         where
@@ -333,7 +335,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (challenge_units $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<'a, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [U]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
         where
@@ -346,7 +348,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (ratchet $method:ident $label:literal) $($tail:tt)*) => {
         pub fn $method<'a, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
         where
@@ -358,7 +360,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_points $method:ident $label:literal) $($tail:tt)*) => {
         #[cfg(feature = "arkworks-algebra")]
         pub fn $method<'a, G, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [G]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
@@ -375,7 +377,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (challenge_scalars $method:ident $label:literal) $($tail:tt)*) => {
         #[cfg(feature = "arkworks-algebra")]
         pub fn $method<'a, F, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [F]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>
@@ -391,7 +393,7 @@ macro_rules! define_protocol {
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
     };
-    
+
     (@impl_steps_verifier_fns [$Name:ident] [$PrevState:ty] [$($acc:tt)*] (message_scalars $method:ident $label:literal) $($tail:tt)*) => {
         #[cfg(feature = "arkworks-algebra")]
         pub fn $method<'a, F, H, U>(mut state: $crate::typed::Verifier<'a, $Name, $PrevState, H, U>, output: &mut [F]) -> $crate::typed::Verifier<'a, $Name, $method, H, U>

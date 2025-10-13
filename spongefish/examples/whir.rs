@@ -13,7 +13,6 @@ use std::sync::Arc;
 /// 5. V → P: Folding challenges (Fiat-Shamir)
 /// 6. P → V: Opening proof (decommitment path + folded values)
 /// 7. V: Verify consistency
-
 use ark_bn254::Fr;
 use ark_crypto_primitives::{
     crh::{CRHScheme, TwoToOneCRHScheme},
@@ -22,10 +21,12 @@ use ark_crypto_primitives::{
 use ark_ff::{Field, PrimeField, UniformRand};
 use rand::rngs::OsRng;
 use spongefish::{
-    codecs::arkworks_algebra::{
-        FieldPattern, ProverFieldMessageExt, UnitToField, VerifierFieldMessageExt,
+    codecs::{
+        arkworks_algebra::{
+            FieldPattern, ProverFieldMessageExt, UnitToField, VerifierFieldMessageExt,
+        },
+        unit::Pattern as _,
     },
-    codecs::unit::Pattern as _,
     pattern::{Label, Pattern, PatternState},
     DefaultHash, ProofError, ProofResult, ProverState, VerifierState,
 };
@@ -118,8 +119,8 @@ impl Polynomial {
     /// Evaluate at a random point using multilinear extension
     fn evaluate_at(&self, point: &[Fr]) -> Fr {
         assert_eq!(point.len(), self.num_vars);
-        
-        // Simple multilinear evaluation 
+
+        // Simple multilinear evaluation
         let mut result = Fr::from(0u64);
         for (i, &eval) in self.evaluations.iter().enumerate() {
             let mut term = eval;
@@ -147,49 +148,55 @@ where
     let mut pattern = PatternState::<u8>::new();
 
     pattern.begin_protocol(Label::from("whir")).unwrap();
-    
+
     // Commitment phase
     <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
         &mut pattern,
         Label::from("commitment"),
         1,
-    ).unwrap();
-    
-    // Challenge: evaluation point 
+    )
+    .unwrap();
+
+    // Challenge: evaluation point
     <PatternState<u8> as FieldPattern<Fr>>::challenge_scalars(
         &mut pattern,
         Label::from("eval_point"),
         num_vars,
-    ).unwrap();
-    
+    )
+    .unwrap();
+
     // Query phase: claimed evaluation
     <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
         &mut pattern,
         Label::from("claimed_eval"),
         1,
-    ).unwrap();
-    
+    )
+    .unwrap();
+
     pattern.ratchet().unwrap();
-    
+
     // Challenge phase (multiple rounds for folding)
     for round in 0..num_vars {
         <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
             &mut pattern,
             Label::from(format!("round_{}_value", round)),
             1,
-        ).unwrap();
+        )
+        .unwrap();
         <PatternState<u8> as FieldPattern<Fr>>::challenge_scalars(
             &mut pattern,
             Label::from(format!("round_{}_challenge", round)),
             1,
-        ).unwrap();
+        )
+        .unwrap();
         <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
             &mut pattern,
             Label::from(format!("round_{}_auth", round)),
             1,
-        ).unwrap();
+        )
+        .unwrap();
     }
-    
+
     pattern.end_protocol(Label::from("whir")).unwrap();
     pattern
 }
@@ -223,18 +230,18 @@ where
     // Get evaluation point as Fiat-Shamir challenge (after commitment!)
     let mut eval_point = vec![Fr::default(); poly.num_vars];
     prover.fill_challenge_scalars(Label::from("eval_point"), &mut eval_point)?;
-    
+
     println!("  Prover received challenge point from transcript");
 
     // Compute and send claimed evaluation
     let claimed_eval = poly.evaluate_at(&eval_point);
     prover.message_scalars(Label::from("claimed_eval"), &[claimed_eval])?;
-    
+
     prover.ratchet()?;
 
     // Folding protocol (simplified)
     let mut current_poly = poly.clone();
-    
+
     for round in 0..poly.num_vars {
         // Send current polynomial evaluation at a folded point
         let round_value = current_poly.evaluations[0]; // Simplified
@@ -256,16 +263,14 @@ where
         let mut folded_evals = vec![Fr::from(0u64); new_size];
         for i in 0..new_size {
             folded_evals[i] = current_poly.evaluations[2 * i]
-                + challenge * (current_poly.evaluations[2 * i + 1] - current_poly.evaluations[2 * i]);
+                + challenge
+                    * (current_poly.evaluations[2 * i + 1] - current_poly.evaluations[2 * i]);
         }
         current_poly = Polynomial::new(folded_evals);
 
         // Send authentication value (simplified)
         let auth_value = round_value * challenge; // Mock auth path
-        prover.message_scalars(
-            Label::from(format!("round_{}_auth", round)),
-            &[auth_value],
-        )?;
+        prover.message_scalars(Label::from(format!("round_{}_auth", round)), &[auth_value])?;
     }
 
     Ok(())
@@ -275,25 +280,21 @@ where
 // Verifier
 // ============================================================================
 
-fn verify_opening(
-    verifier: &mut VerifierState<DefaultHash, u8>,
-    num_vars: usize,
-) -> ProofResult<()>
+fn verify_opening(verifier: &mut VerifierState<DefaultHash, u8>, num_vars: usize) -> ProofResult<()>
 where
-    for<'a> VerifierState<'a, DefaultHash, u8>:
-        VerifierFieldMessageExt<Fr> + UnitToField<Fr>,
+    for<'a> VerifierState<'a, DefaultHash, u8>: VerifierFieldMessageExt<Fr> + UnitToField<Fr>,
 {
     // Read commitment
     let mut commitment_buf = [Fr::default(); 1];
     verifier.fill_message_scalars(Label::from("commitment"), &mut commitment_buf)?;
     let _commitment = commitment_buf[0];
-    
+
     // Generate evaluation point as challenge (after seeing commitment!)
     let mut eval_point = vec![Fr::default(); num_vars];
     verifier.fill_challenge_scalars(Label::from("eval_point"), &mut eval_point)?;
-    
+
     println!("  Verifier generated challenge point from transcript");
-    
+
     // Read claimed evaluation
     let mut claimed_eval_buf = [Fr::default(); 1];
     verifier.fill_message_scalars(Label::from("claimed_eval"), &mut claimed_eval_buf)?;
@@ -321,10 +322,8 @@ where
 
         // Read authentication
         let mut auth_buf = [Fr::default(); 1];
-        verifier.fill_message_scalars(
-            Label::from(format!("round_{}_auth", round)),
-            &mut auth_buf,
-        )?;
+        verifier
+            .fill_message_scalars(Label::from(format!("round_{}_auth", round)), &mut auth_buf)?;
         let auth_value = auth_buf[0];
 
         // Verify consistency (simplified check)
@@ -354,10 +353,8 @@ fn main() {
     let poly_size = 8; // 2^3
     let num_vars = 3;
     let mut rng = OsRng;
-    
-    let evaluations: Vec<Fr> = (0..poly_size)
-        .map(|_| Fr::rand(&mut rng))
-        .collect();
+
+    let evaluations: Vec<Fr> = (0..poly_size).map(|_| Fr::rand(&mut rng)).collect();
     let poly = Polynomial::new(evaluations);
     println!("✓ Random polynomial created ({} evaluations)\n", poly_size);
 
@@ -382,8 +379,7 @@ fn main() {
             .begin_protocol(Label::from("whir"))
             .expect("Failed to begin protocol");
 
-        prove_opening(&mut prover, &poly, commitment)
-            .expect("Proving failed");
+        prove_opening(&mut prover, &poly, commitment).expect("Proving failed");
 
         prover
             .end_protocol(Label::from("whir"))
@@ -402,8 +398,7 @@ fn main() {
             .begin_protocol(Label::from("whir"))
             .expect("Failed to begin protocol");
 
-        verify_opening(&mut verifier, num_vars)
-            .expect("Verification failed");
+        verify_opening(&mut verifier, num_vars).expect("Verification failed");
 
         verifier
             .end_protocol(Label::from("whir"))

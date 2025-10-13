@@ -76,7 +76,6 @@ define_protocol! {
     }
 }
 
-
 fn create_schnorr_pattern() -> PatternState<u8> {
     let mut pattern = PatternState::<u8>::new();
 

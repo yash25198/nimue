@@ -133,12 +133,13 @@ pub use ext::{
     ProverFieldMessageExt, ProverGroupMessageExt, VerifierFieldMessageExt, VerifierGroupMessageExt,
 };
 
-pub use crate::traits::{
-    BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, UnitToBytes, UnitTranscript,
-};
 pub use crate::{
-    duplex_sponge::Unit, DuplexSpongeInterface, ProofError, ProofResult, ProverState,
-    VerifierState,
+    duplex_sponge::Unit,
+    traits::{
+        BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, UnitToBytes,
+        UnitTranscript,
+    },
+    DuplexSpongeInterface, ProofError, ProofResult, ProverState, VerifierState,
 };
 
 super::traits::field_traits!(ark_ff::Field);

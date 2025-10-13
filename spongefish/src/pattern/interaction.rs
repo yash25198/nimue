@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use core::{any::type_name, fmt::Display};
+use std::sync::Arc;
 
 /// A single abstract prover-verifier interaction.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -60,7 +60,6 @@ impl Label {
             Self::Custom(s) => s.as_ref(),
         }
     }
-
 }
 
 // Conversions
