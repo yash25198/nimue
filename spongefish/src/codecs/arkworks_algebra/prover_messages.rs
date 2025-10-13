@@ -32,7 +32,7 @@ where
         }
 
         // Add bytes directly - this matches the pattern's inner message_bytes call
-        self.message_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &buf)?;
+        self.message_bytes(Label::BaseFieldCoefficientsLittleEndian, &buf)?;
 
         Ok(self)
     }
@@ -54,8 +54,8 @@ where
         }
 
         // Add bytes directly - this matches the pattern's inner message_bytes call
-        // The pattern system expects this to use SERIALIZED_GROUP label
-        self.message_bytes(Label::SERIALIZED_GROUP, &buf)?;
+        // The pattern system expects this to use SerializedGroup label
+        self.message_bytes(Label::SerializedGroup, &buf)?;
 
         Ok(self)
     }
@@ -76,7 +76,7 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.public_bytes(Label::PUBLIC, &buf)?;
+        self.public_bytes(Label::Public, &buf)?;
         Ok(buf)
     }
 }
@@ -120,7 +120,7 @@ where
             .collect();
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::BASE_FIELD_COEFFICIENTS, &flattened)?;
+        self.add_units(Label::BaseFieldCoefficients, &flattened)?;
 
         Ok(self)
     }
@@ -152,7 +152,7 @@ where
         }
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::COORDINATES, &coords)?;
+        self.add_units(Label::Coordinates, &coords)?;
 
         Ok(self)
     }
@@ -184,7 +184,7 @@ where
         }
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::COORDINATES, &coords)?;
+        self.add_units(Label::Coordinates, &coords)?;
 
         Ok(self)
     }
@@ -204,7 +204,7 @@ where
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        self.public_units(Label::PUBLIC, &flattened)?;
+        self.public_units(Label::Public, &flattened)?;
         Ok(())
     }
 }
@@ -279,7 +279,7 @@ where
 {
     fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
         for &byte in input {
-            self.public_units(label, &[Fp::from(byte)])?;
+            self.public_units(label.clone(), &[Fp::from(byte)])?;
         }
         Ok(self)
     }
@@ -303,8 +303,8 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         self.pattern
-            .begin_challenge::<F>(label, Length::Fixed(output.len()))?;
-        self.fill_challenge_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
+            .begin_challenge::<F>(label.clone(), Length::Fixed(output.len()))?;
+        self.fill_challenge_bytes(Label::BaseFieldCoefficientsLittleEndian, &mut buf)?;
         self.pattern
             .end_challenge::<F>(label, Length::Fixed(output.len()))?;
 
@@ -488,11 +488,11 @@ mod tests {
 
         // Create proper pattern
         let mut pattern = PatternState::<u8>::new();
-        pattern.message_bytes(Label::BYTES, input.len()).unwrap();
+        pattern.message_bytes(Label::Bytes, input.len()).unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
-        assert!(prover.message_bytes(Label::BYTES, input).is_ok());
+        assert!(prover.message_bytes(Label::Bytes, input).is_ok());
 
         prover.finalize().unwrap();
     }
@@ -509,7 +509,7 @@ mod tests {
         );
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-        let result = prover.add_bytes(Label::BYTES, input);
+        let result = prover.add_bytes(Label::Bytes, input);
         assert!(result.is_err(), "Expected error due to pattern mismatch");
 
         prover.abort().unwrap();

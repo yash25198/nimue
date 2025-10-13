@@ -18,7 +18,7 @@ use crate::{
 #[test]
 fn test_prover_rng_basic() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_bytes(Label::BYTES, 1).unwrap();
+    pattern.message_bytes(Label::Bytes, 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut prover_state = ProverState::<Keccak>::new(pattern, rand::rngs::OsRng);
@@ -40,21 +40,21 @@ fn test_prover_rng_basic() {
 #[test]
 fn test_prover_state_bytewriter() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_bytes(Label::BYTES, 1).unwrap();
+    pattern.message_bytes(Label::Bytes, 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut prover_state = ProverState::<Keccak>::new(Arc::clone(&pattern), rand::rngs::OsRng);
-    assert!(prover_state.message_bytes(Label::BYTES, &[0u8]).is_ok());
-    assert!(prover_state.message_bytes(Label::BYTES, &[1u8]).is_err());
+    assert!(prover_state.message_bytes(Label::Bytes, &[0u8]).is_ok());
+    assert!(prover_state.message_bytes(Label::Bytes, &[1u8]).is_err());
 
     // Test public bytes (not in transcript)
     let mut pattern = PatternState::<u8>::new();
-    pattern.public_bytes(Label::PUBLIC, 1).unwrap();
+    pattern.public_bytes(Label::Public, 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut prover_state = ProverState::<Keccak>::new(pattern, rand::rngs::OsRng);
-    // prover_state.public_bytes(Label::PUBLIC, &[0u8]).unwrap();
-    assert!(prover_state.public_bytes(Label::PUBLIC, &[0u8]).is_ok());
+    // prover_state.public_bytes(Label::Public, &[0u8]).unwrap();
+    assert!(prover_state.public_bytes(Label::Public, &[0u8]).is_ok());
     assert_eq!(prover_state.narg_string(), b"");
     prover_state.finalize().unwrap();
 }
@@ -62,7 +62,7 @@ fn test_prover_state_bytewriter() {
 #[test]
 fn test_invalid_pattern_sequence() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_bytes(Label::BYTES, 3).unwrap();
+    pattern.message_bytes(Label::Bytes, 3).unwrap();
     pattern.challenge_bytes(Label::custom("chal"), 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -76,7 +76,7 @@ fn test_invalid_pattern_sequence() {
 #[test]
 fn test_deterministic() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_bytes(Label::BYTES, 3).unwrap();
+    pattern.message_bytes(Label::Bytes, 3).unwrap();
     pattern.challenge_bytes(Label::custom("chal"), 16).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -87,10 +87,10 @@ fn test_deterministic() {
     let mut second = [0u8; 3];
 
     first_verifier
-        .fill_next_bytes(Label::BYTES, &mut first)
+        .fill_next_bytes(Label::Bytes, &mut first)
         .unwrap();
     second_verifier
-        .fill_next_bytes(Label::BYTES, &mut second)
+        .fill_next_bytes(Label::Bytes, &mut second)
         .unwrap();
 
     let mut first_chal = [0u8; 16];
@@ -112,7 +112,7 @@ fn test_deterministic() {
 #[test]
 fn test_statistics() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_bytes(Label::BYTES, 4).unwrap();
+    pattern.message_bytes(Label::Bytes, 4).unwrap();
     pattern.ratchet().unwrap();
     pattern
         .challenge_bytes(Label::custom("output"), 2048)
@@ -121,7 +121,7 @@ fn test_statistics() {
 
     let mut verifier_state = VerifierState::<Keccak>::new(pattern, b"seed");
     verifier_state
-        .fill_next_bytes(Label::BYTES, &mut [0u8; 4])
+        .fill_next_bytes(Label::Bytes, &mut [0u8; 4])
         .unwrap();
     verifier_state.ratchet().unwrap();
 
@@ -143,21 +143,21 @@ fn test_statistics() {
 #[test]
 // fn test_transcript_readwrite() {
 //     let mut pattern = PatternState::<u8>::new();
-//     pattern.message_units(Label::UNITS, 10).unwrap();
+//     pattern.message_units(Label::Units, 10).unwrap();
 //     pattern.challenge_bytes(Label::custom("chal"), 10).unwrap();
 //     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
 //     let mut prover_state = ProverState::<Keccak>::new(Arc::clone(&pattern), rand::rngs::OsRng);
-//     prover_state.add_units(Label::UNITS, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap();
+//     prover_state.add_units(Label::Units, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]).unwrap();
 //     let mut prover_challenges = [0u8; 10];
 //     prover_state.fill_challenge_bytes(Label::custom("chal"), &mut prover_challenges).unwrap();
 //     let transcript = prover_state.finalize().unwrap();
 
 //     let mut verifier_state = VerifierState::<Keccak>::new(pattern, &transcript);
 //     let mut input = [0u8; 5];
-//     verifier_state.fill_next_units(Label::UNITS, &mut input).unwrap();
+//     verifier_state.fill_next_units(Label::Units, &mut input).unwrap();
 //     assert_eq!(input, [0, 1, 2, 3, 4]);
-//     verifier_state.fill_next_units(Label::UNITS, &mut input).unwrap();
+//     verifier_state.fill_next_units(Label::Units, &mut input).unwrap();
 //     assert_eq!(input, [5, 6, 7, 8, 9]);
 //     let mut verifier_challenges = [0u8; 10];
 //     verifier_state.fill_challenge_bytes(Label::custom("chal"), &mut verifier_challenges).unwrap();
@@ -168,13 +168,13 @@ fn test_statistics() {
 #[should_panic(expected = "UnexpectedInteraction")]
 fn test_incomplete_pattern() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_units(Label::UNITS, 10).unwrap();
+    pattern.message_units(Label::Units, 10).unwrap();
     pattern.challenge_bytes(Label::custom("chal"), 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut prover_state = ProverState::<Keccak>::new(pattern, rand::rngs::OsRng);
     prover_state
-        .add_units(Label::UNITS, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+        .add_units(Label::Units, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
         .unwrap();
     // Wrong size - should panic
     prover_state
@@ -185,7 +185,7 @@ fn test_incomplete_pattern() {
 #[test]
 fn test_prover_empty_absorb() {
     let mut pattern = PatternState::<u8>::new();
-    pattern.message_bytes(Label::BYTES, 1).unwrap();
+    pattern.message_bytes(Label::Bytes, 1).unwrap();
     pattern.challenge_bytes(Label::custom("chal"), 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -197,7 +197,7 @@ fn test_prover_empty_absorb() {
 
     let mut verifier = VerifierState::<Keccak>::new(pattern, b"");
     // Empty transcript - should fail
-    assert!(verifier.next_bytes::<1>(Label::BYTES).is_err());
+    assert!(verifier.next_bytes::<1>(Label::Bytes).is_err());
     verifier.abort().unwrap();
 }
 
@@ -208,7 +208,7 @@ fn test_prover_empty_absorb() {
 //     let bytes = b"yellow submarine";
 
 //     let mut pattern = PatternState::<u8>::new();
-//     pattern.message_bytes(Label::BYTES, 16).unwrap();
+//     pattern.message_bytes(Label::Bytes, 16).unwrap();
 //     pattern.challenge_bytes(Label::custom("control"), 16).unwrap();
 //     pattern.message_bytes(Label::custom("level2"), 1).unwrap();
 //     pattern.challenge_bytes(Label::custom("long"), 1024).unwrap();
@@ -216,14 +216,14 @@ fn test_prover_empty_absorb() {
 
 //     // Control - do everything at once
 //     let mut prover_state = ProverState::<H>::new(Arc::clone(&pattern), rand::rngs::OsRng);
-//     prover_state.message_bytes(Label::BYTES, bytes).unwrap();
+//     prover_state.message_bytes(Label::Bytes, bytes).unwrap();
 //     let control_chal = prover_state.challenge_bytes::<16>(Label::custom("control")).unwrap();
 //     let control_transcript = prover_state.narg_string().to_vec();
 
 //     // Streaming - split the operations
 //     let mut stream_prover = ProverState::<H>::new(Arc::clone(&pattern), rand::rngs::OsRng);
-//     stream_prover.message_bytes(Label::BYTES, &bytes[..10]).unwrap();
-//     stream_prover.message_bytes(Label::BYTES, &bytes[10..]).unwrap();
+//     stream_prover.message_bytes(Label::Bytes, &bytes[..10]).unwrap();
+//     stream_prover.message_bytes(Label::Bytes, &bytes[10..]).unwrap();
 //     let first_chal = stream_prover.challenge_bytes::<8>(Label::custom("control")).unwrap();
 //     let second_chal = stream_prover.challenge_bytes::<8>(Label::custom("control")).unwrap();
 //     let transcript = stream_prover.narg_string().to_vec();

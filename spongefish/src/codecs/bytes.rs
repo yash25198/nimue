@@ -13,22 +13,22 @@ pub trait Pattern {
 /// Implementation where `Unit = u8`
 impl Pattern for PatternState<u8> {
     fn public_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_public::<u8>(label, Length::Fixed(size))?;
-        self.public_units(Label::UNITS, size)?;
+        self.begin_public::<u8>(label.clone(), Length::Fixed(size))?;
+        self.public_units(Label::Units, size)?;
         self.end_public::<u8>(label, Length::Fixed(size))?;
         Ok(self)
     }
 
     fn message_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_message::<u8>(label, Length::Fixed(size))?;
-        self.message_units(Label::UNITS, size)?;
+        self.begin_message::<u8>(label.clone(), Length::Fixed(size))?;
+        self.message_units(Label::Units, size)?;
         self.end_message::<u8>(label, Length::Fixed(size))?;
         Ok(self)
     }
 
     fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_challenge::<u8>(label, Length::Fixed(size))?;
-        self.challenge_units(Label::UNITS, size)?;
+        self.begin_challenge::<u8>(label.clone(), Length::Fixed(size))?;
+        self.challenge_units(Label::Units, size)?;
         self.end_challenge::<u8>(label, Length::Fixed(size))?;
         Ok(self)
     }

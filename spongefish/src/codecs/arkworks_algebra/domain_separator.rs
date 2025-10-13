@@ -15,9 +15,9 @@ where
     F: Field,
 {
     fn message_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
-        self.begin_message::<F>(label, Length::Fixed(count))?;
+        self.begin_message::<F>(label.clone(), Length::Fixed(count))?;
         self.message_bytes(
-            Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN,
+            Label::BaseFieldCoefficientsLittleEndian,
             count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
         )?;
         self.end_message::<F>(label, Length::Fixed(count))?;
@@ -25,9 +25,9 @@ where
     }
 
     fn challenge_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
-        self.begin_challenge::<F>(label, Length::Fixed(count))?;
+        self.begin_challenge::<F>(label.clone(), Length::Fixed(count))?;
         self.challenge_bytes(
-            Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN,
+            Label::BaseFieldCoefficientsLittleEndian,
             count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
         )?;
         self.end_challenge::<F>(label, Length::Fixed(count))?;
@@ -41,8 +41,8 @@ where
 {
     fn message_points(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         let compressed_size = G::default().compressed_size();
-        self.begin_message::<G>(label, Length::Fixed(count))?;
-        self.message_bytes(Label::SERIALIZED_GROUP, count * compressed_size)?;
+        self.begin_message::<G>(label.clone(), Length::Fixed(count))?;
+        self.message_bytes(Label::SerializedGroup, count * compressed_size)?;
         self.end_message::<G>(label, Length::Fixed(count))?;
         Ok(self)
     }
@@ -55,9 +55,9 @@ where
     C: FpConfig<N>,
 {
     fn message_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
-        self.begin_message::<F>(label, Length::Fixed(count))?;
+        self.begin_message::<F>(label.clone(), Length::Fixed(count))?;
         self.message_bytes(
-            Label::BASE_FIELD_COEFFICIENTS,
+            Label::BaseFieldCoefficients,
             count * F::extension_degree() as usize,
         )?;
         self.end_message::<F>(label, Length::Fixed(count))?;
@@ -65,9 +65,9 @@ where
     }
 
     fn challenge_scalars(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
-        self.begin_challenge::<F>(label, Length::Fixed(count))?;
+        self.begin_challenge::<F>(label.clone(), Length::Fixed(count))?;
         self.challenge_bytes(
-            Label::BASE_FIELD_COEFFICIENTS,
+            Label::BaseFieldCoefficients,
             count * F::extension_degree() as usize,
         )?;
         self.end_challenge::<F>(label, Length::Fixed(count))?;
@@ -81,8 +81,8 @@ where
     C: FpConfig<N>,
 {
     fn message_points(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
-        self.begin_message::<G>(label, Length::Fixed(count))?;
-        self.message_bytes(Label::COORDINATES, count * 2)?;
+        self.begin_message::<G>(label.clone(), Length::Fixed(count))?;
+        self.message_bytes(Label::Coordinates, count * 2)?;
         self.end_message::<G>(label, Length::Fixed(count))?;
         Ok(self)
     }
@@ -94,22 +94,22 @@ where
 {
     /// Add `count` bytes to the transcript, encoding each of them as an element of the field `Fp`.
     fn public_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_public::<u8>(label, Length::Fixed(size))?;
-        self.public_units(Label::UNITS, size)?;
+        self.begin_public::<u8>(label.clone(), Length::Fixed(size))?;
+        self.public_units(Label::Units, size)?;
         self.end_public::<u8>(label, Length::Fixed(size))
     }
 
     /// Add `count` bytes to the transcript, encoding each of them as an element of the field `Fp`.
     fn message_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_message::<u8>(label, Length::Fixed(size))?;
-        self.message_units(Label::UNITS, size)?;
+        self.begin_message::<u8>(label.clone(), Length::Fixed(size))?;
+        self.message_units(Label::Units, size)?;
         self.end_message::<u8>(label, Length::Fixed(size))
     }
 
     fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_challenge::<u8>(label, Length::Fixed(size))?;
+        self.begin_challenge::<u8>(label.clone(), Length::Fixed(size))?;
         let n = crate::codecs::random_bits_in_random_modp(Fp::<C, N>::MODULUS) / 8;
-        self.challenge_units(Label::UNITS, size.div_ceil(n))?;
+        self.challenge_units(Label::Units, size.div_ceil(n))?;
         self.end_challenge::<u8>(label, Length::Fixed(size))
     }
 }

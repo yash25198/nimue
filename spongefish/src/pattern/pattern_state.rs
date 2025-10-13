@@ -70,7 +70,7 @@ where
                     Interaction::new::<()>(
                         Hierarchy::End,
                         Kind::Protocol,
-                        Label::PROTOCOL,
+                        Label::Protocol,
                         Length::None,
                     )
                 }),
@@ -95,14 +95,14 @@ where
             wrapped.push(Interaction::new::<()>(
                 Hierarchy::Begin,
                 Kind::Protocol,
-                Label::PROTOCOL,
+                Label::Protocol,
                 Length::None,
             ));
             wrapped.extend(self.interactions);
             wrapped.push(Interaction::new::<()>(
                 Hierarchy::End,
                 Kind::Protocol,
-                Label::PROTOCOL,
+                Label::Protocol,
                 Length::None,
             ));
             self.interactions = wrapped;
@@ -196,7 +196,7 @@ where
         self.interact(Interaction::new::<()>(
             Hierarchy::Atomic,
             Kind::Protocol,
-            Label::RATCHET,
+            Label::Ratchet,
             Length::None,
         ))?;
         Ok(self)

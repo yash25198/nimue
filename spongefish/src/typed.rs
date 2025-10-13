@@ -232,7 +232,7 @@ macro_rules! define_protocol {
             R: rand::RngCore + rand::CryptoRng,
         {
             use $crate::pattern::Label;
-            state.inner_mut().add_units(Label::UNITS, input).expect("Failed to add units");
+            state.inner_mut().add_units(Label::Units, input).expect("Failed to add units");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
@@ -246,7 +246,7 @@ macro_rules! define_protocol {
             R: rand::RngCore + rand::CryptoRng,
         {
             use $crate::{pattern::Label, UnitTranscript};
-            state.inner_mut().fill_challenge_units(Label::UNITS, output).expect("Failed to fill challenge units");
+            state.inner_mut().fill_challenge_units(Label::Units, output).expect("Failed to fill challenge units");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
@@ -328,7 +328,7 @@ macro_rules! define_protocol {
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
         {
             use $crate::pattern::Label;
-            let _ = state.inner_mut().fill_next_units(Label::UNITS, output);
+            let _ = state.inner_mut().fill_next_units(Label::Units, output);
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
@@ -341,7 +341,7 @@ macro_rules! define_protocol {
             H: $crate::duplex_sponge::DuplexSpongeInterface<U>,
         {
             use $crate::{pattern::Label, UnitTranscript};
-            state.inner_mut().fill_challenge_units(Label::UNITS, output).expect("Failed to fill challenge units");
+            state.inner_mut().fill_challenge_units(Label::Units, output).expect("Failed to fill challenge units");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
