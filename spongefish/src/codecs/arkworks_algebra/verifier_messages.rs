@@ -10,7 +10,7 @@ use crate::{
 };
 
 // ============================================================================
-// VERIFIER IMPLEMENTATIONS FOR u8 (byte-based operations)
+// VERIFIER IMPLEMENTATIONS FOR u8 (unit-basedoperations)
 // ============================================================================
 
 impl<G, H> CommonGroupToUnit<G> for VerifierState<'_, H, u8>

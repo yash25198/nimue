@@ -13,7 +13,7 @@ use crate::{
 };
 
 // ============================================================================
-// PROVER IMPLEMENTATIONS FOR u8 (byte-based operations)
+// PROVER IMPLEMENTATIONS FOR u8 (unit-basedoperations)
 // ============================================================================
 
 impl<F, H, R> FieldToUnitSerialize<F> for ProverState<H, u8, R>

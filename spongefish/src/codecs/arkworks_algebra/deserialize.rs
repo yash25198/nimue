@@ -12,7 +12,7 @@ use crate::{
 };
 
 // ============================================================================
-// VERIFIER IMPLEMENTATIONS FOR u8 (byte-based operations)
+// VERIFIER IMPLEMENTATIONS FOR u8 (unit-basedoperations)
 // ============================================================================
 
 impl<F, H> FieldToUnitDeserialize<F> for VerifierState<'_, H, u8>
