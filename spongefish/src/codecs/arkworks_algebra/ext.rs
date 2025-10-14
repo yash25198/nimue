@@ -83,7 +83,7 @@ where
     fn message_scalars(&mut self, label: Label, input: &[F]) -> Result<&mut Self, PatternError> {
         // Call Pattern trait methods with correct type parameters
         use crate::pattern::{Length, Pattern};
-        Pattern::begin_message::<F>(self, label, Length::Fixed(input.len()))?;
+        Pattern::begin_message::<F>(self, label.clone(), Length::Fixed(input.len()))?;
         self.add_scalars(input)?;
         Pattern::end_message::<F>(self, label, Length::Fixed(input.len()))?;
         Ok(self)
@@ -101,7 +101,7 @@ where
     fn message_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError> {
         // Call Pattern trait methods with correct type parameters
         use crate::pattern::{Length, Pattern};
-        Pattern::begin_message::<G>(self, label, Length::Fixed(input.len()))?;
+        Pattern::begin_message::<G>(self, label.clone(), Length::Fixed(input.len()))?;
         self.add_points(input)?;
         Pattern::end_message::<G>(self, label, Length::Fixed(input.len()))?;
         Ok(self)
@@ -164,7 +164,7 @@ where
     fn fill_message_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
         // Use Pattern trait methods with correct type parameters
         use crate::pattern::{Length, Pattern};
-        Pattern::begin_message::<F>(self, label, Length::Fixed(output.len()))?;
+        Pattern::begin_message::<F>(self, label.clone(), Length::Fixed(output.len()))?;
         self.fill_next_scalars(output)?;
         Pattern::end_message::<F>(self, label, Length::Fixed(output.len()))?;
         Ok(self)
@@ -181,7 +181,7 @@ where
     fn fill_message_points(&mut self, label: Label, output: &mut [G]) -> ProofResult<&mut Self> {
         // Use Pattern trait methods with correct type parameters
         use crate::pattern::{Length, Pattern};
-        Pattern::begin_message::<G>(self, label, Length::Fixed(output.len()))?;
+        Pattern::begin_message::<G>(self, label.clone(), Length::Fixed(output.len()))?;
         self.fill_next_points(output)?;
         Pattern::end_message::<G>(self, label, Length::Fixed(output.len()))?;
         Ok(self)

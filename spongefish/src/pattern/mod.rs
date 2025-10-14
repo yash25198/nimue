@@ -47,7 +47,7 @@
 //! use spongefish::codecs::bytes::Pattern;
 //!
 //! // Define a protocol pattern
-//! let mut pattern = PatternState::<u8>::new();
+//! let mut pattern = PatternState::new();
 //! pattern.begin_protocol(Label::custom("Schnorr"))?;
 //! pattern.message_bytes(Label::custom("commitment"), 32)?;
 //! pattern.challenge_bytes(Label::custom("challenge"), 32)?;
@@ -224,12 +224,11 @@ pub use Pattern as Prover;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
 
     #[test]
     fn test_record_playback() {
         // Record a new pattern
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .begin_protocol(Label::custom("Example protocol"))
             .expect("Failed to begin protocol");
@@ -247,7 +246,7 @@ mod tests {
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         // Play it back exactly
-        let mut playback = PatternPlayer::new(Arc::new(pattern));
+        let mut playback = PatternPlayer::new(pattern.into());
         playback
             .begin_protocol(Label::custom("Example protocol"))
             .expect("Failed to begin protocol");
@@ -268,7 +267,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "Dropped unfinalized transcript.")]
     fn panics_if_playback_not_finalized() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .interact(Interaction::new::<u64>(
                 Hierarchy::Atomic,
@@ -279,12 +278,12 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(Arc::new(pattern));
+        let mut playback = PatternPlayer::new(pattern.into());
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
                 Kind::Protocol,
-                Label::PROTOCOL,
+                Label::Protocol,
                 Length::None,
             ))
             .expect("Failed to interact with pattern");
@@ -293,7 +292,7 @@ mod tests {
     #[test]
 
     fn panics_if_record_begin_end_mismatch() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .begin_protocol(Label::custom("Example protocol"))
             .expect("Failed to begin protocol");
@@ -316,7 +315,7 @@ mod tests {
     #[test]
 
     fn panics_if_type_mismatch() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .interact(Interaction::new::<u64>(
                 Hierarchy::Atomic,
@@ -327,12 +326,12 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(Arc::new(pattern));
+        let mut playback = PatternPlayer::new(pattern.into());
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
                 Kind::Protocol,
-                Label::PROTOCOL,
+                Label::Protocol,
                 Length::None,
             ))
             .expect("Failed to interact with pattern");
@@ -352,7 +351,7 @@ mod tests {
     #[test]
 
     fn panics_if_kind_mismatch() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .interact(Interaction::new::<u64>(
                 Hierarchy::Atomic,
@@ -363,12 +362,12 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(Arc::new(pattern));
+        let mut playback = PatternPlayer::new(pattern.into());
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
                 Kind::Protocol,
-                Label::PROTOCOL,
+                Label::Protocol,
                 Length::None,
             ))
             .expect("Failed to interact with pattern");
@@ -388,7 +387,7 @@ mod tests {
     #[test]
 
     fn panics_if_label_mismatch() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .interact(Interaction::new::<u64>(
                 Hierarchy::Atomic,
@@ -399,12 +398,12 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(Arc::new(pattern));
+        let mut playback = PatternPlayer::new(pattern.into());
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
                 Kind::Protocol,
-                Label::PROTOCOL,
+                Label::Protocol,
                 Length::None,
             ))
             .expect("Failed to interact with pattern");
@@ -424,7 +423,7 @@ mod tests {
     #[test]
 
     fn panics_if_length_mismatch() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .interact(Interaction::new::<u64>(
                 Hierarchy::Atomic,
@@ -435,12 +434,12 @@ mod tests {
             .expect("Failed to interact with pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut playback = PatternPlayer::new(Arc::new(pattern));
+        let mut playback = PatternPlayer::new(pattern.into());
         playback
             .interact(Interaction::new::<()>(
                 Hierarchy::Begin,
                 Kind::Protocol,
-                Label::PROTOCOL,
+                Label::Protocol,
                 Length::None,
             ))
             .expect("Failed to interact with pattern");

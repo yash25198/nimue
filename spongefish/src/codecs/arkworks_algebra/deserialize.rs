@@ -12,7 +12,7 @@ use crate::{
 };
 
 // ============================================================================
-// VERIFIER IMPLEMENTATIONS FOR u8 (byte-based operations)
+// VERIFIER IMPLEMENTATIONS FOR u8 (unit-basedoperations)
 // ============================================================================
 
 impl<F, H> FieldToUnitDeserialize<F> for VerifierState<'_, H, u8>
@@ -27,7 +27,7 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         // Read all bytes at once - this matches the pattern's single message_bytes call
-        self.fill_next_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
+        self.fill_next_bytes(Label::BaseFieldCoefficients, &mut buf)?;
 
         // Deserialize each scalar from its chunk
         for (i, o) in output.iter_mut().enumerate() {
@@ -52,7 +52,7 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         // Read all bytes at once - this matches the pattern's single message_bytes call
-        self.fill_next_bytes(Label::SERIALIZED_GROUP, &mut buf)?;
+        self.fill_next_bytes(Label::SerializedGroup, &mut buf)?;
 
         // Deserialize each point from its chunk
         for (i, o) in output.iter_mut().enumerate() {
@@ -81,7 +81,7 @@ where
         let mut flattened = vec![Fp::<C, N>::default(); output.len() * extension_degree];
 
         // Read base field coefficients directly - matches pattern's inner message_units call
-        self.fill_next_units(Label::BASE_FIELD_COEFFICIENTS, &mut flattened)?;
+        self.fill_next_units(Label::BaseFieldCoefficients, &mut flattened)?;
 
         // Convert base field elements back to extension field
         for (i, o) in output.iter_mut().enumerate() {
@@ -110,9 +110,9 @@ where
         &mut self,
         output: &mut [ark_ec::short_weierstrass::Projective<P>],
     ) -> ProofResult<&mut Self> {
-        // Read all coordinates (2 per point: x and y) directly
+        // Read all SerializedGroup (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
-        self.fill_next_units(Label::COORDINATES, &mut coords)?;
+        self.fill_next_units(Label::SerializedGroup, &mut coords)?;
 
         // Convert coordinate pairs to points using Short Weierstrass constructor
         for (i, o) in output.iter_mut().enumerate() {
@@ -143,9 +143,9 @@ where
         &mut self,
         output: &mut [ark_ec::twisted_edwards::Projective<P>],
     ) -> ProofResult<&mut Self> {
-        // Read all coordinates (2 per point: x and y) directly
+        // Read all SerializedGroup (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
-        self.fill_next_units(Label::COORDINATES, &mut coords)?;
+        self.fill_next_units(Label::SerializedGroup, &mut coords)?;
 
         // Convert coordinate pairs to points using Twisted Edwards constructor
         for (i, o) in output.iter_mut().enumerate() {
@@ -187,7 +187,7 @@ mod tests {
         use ark_bls12_381::Fr as F;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn test_fill_next_scalars_fp_unit() {
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<BabyBear>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -227,7 +227,7 @@ mod tests {
         type G = EdwardsProjective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -247,7 +247,7 @@ mod tests {
         type G = G1Projective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -267,7 +267,7 @@ mod tests {
         type G = EdwardsProjective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -287,7 +287,7 @@ mod tests {
         type G = G1Projective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 

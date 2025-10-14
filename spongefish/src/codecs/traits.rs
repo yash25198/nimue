@@ -1,13 +1,13 @@
 macro_rules! field_traits {
     ($Field:path) => {
         /// Absorb and squeeze field elements to the domain separator.
-        pub trait FieldPattern<F: $Field> {
-            fn message_scalars(
+        pub trait FieldPattern {
+            fn message_scalars<F: $Field>(
                 &mut self,
                 label: $crate::pattern::Label,
                 count: usize,
             ) -> Result<&mut Self, $crate::pattern::PatternError>;
-            fn challenge_scalars(
+            fn challenge_scalars<F: $Field>(
                 &mut self,
                 label: $crate::pattern::Label,
                 count: usize,
@@ -71,8 +71,8 @@ macro_rules! field_traits {
 macro_rules! group_traits {
     ($Group:path, Scalar: $Field:path) => {
         /// Send group elements in the domain separator.
-        pub trait GroupPattern<G: $Group> {
-            fn message_points(
+        pub trait GroupPattern {
+            fn message_points<G: $Group>(
                 &mut self,
                 label: $crate::pattern::Label,
                 count: usize,

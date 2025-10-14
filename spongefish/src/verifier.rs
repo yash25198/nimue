@@ -48,14 +48,14 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             .map(|i| {
                 i.hierarchy() == Hierarchy::Begin
                     && i.kind() == Kind::Protocol
-                    && *i.label() == Label::PROTOCOL
+                    && *i.label() == Label::Protocol
             })
             .unwrap_or(false);
 
         if has_protocol_wrapper {
             if let Err(e) = state
                 .pattern
-                .begin::<()>(Label::PROTOCOL, Kind::Protocol, Length::None)
+                .begin::<()>(Label::Protocol, Kind::Protocol, Length::None)
             {
                 // If we fail to begin, mark as finalized to avoid panic in Drop
                 let _ = state.pattern.abort();
@@ -158,7 +158,7 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         self.pattern.interact(Interaction::new::<()>(
             Hierarchy::Atomic,
             Kind::Protocol,
-            Label::RATCHET,
+            Label::Ratchet,
             Length::None,
         ))?;
         self.duplex_sponge.ratchet_unchecked();
@@ -222,13 +222,13 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             .map(|i| {
                 i.hierarchy() == Hierarchy::End
                     && i.kind() == Kind::Protocol
-                    && *i.label() == Label::PROTOCOL
+                    && *i.label() == Label::Protocol
             })
             .unwrap_or(false);
 
         if has_protocol_end {
             self.pattern
-                .end::<()>(Label::PROTOCOL, Kind::Protocol, Length::None)?;
+                .end::<()>(Label::Protocol, Kind::Protocol, Length::None)?;
         }
 
         self.pattern.finalize()?;
@@ -316,8 +316,8 @@ impl<H: DuplexSpongeInterface<u8>> BytesToUnitDeserialize for VerifierState<'_, 
         output: &mut [u8],
     ) -> Result<&mut Self, PatternError> {
         self.pattern
-            .begin_message::<u8>(label, Length::Fixed(output.len()))?;
-        self.fill_next_units(Label::UNITS, output)?;
+            .begin_message::<u8>(label.clone(), Length::Fixed(output.len()))?;
+        self.fill_next_units(Label::Units, output)?;
 
         self.pattern
             .end_message::<u8>(label, Length::Fixed(output.len()))?;
@@ -339,8 +339,8 @@ impl<H: DuplexSpongeInterface<u8>> UnitToBytes for VerifierState<'_, H, u8> {
         output: &mut [u8],
     ) -> Result<&mut Self, PatternError> {
         self.pattern
-            .begin_challenge::<u8>(label, Length::Fixed(output.len()))?;
-        self.fill_challenge_units(Label::UNITS, output)?;
+            .begin_challenge::<u8>(label.clone(), Length::Fixed(output.len()))?;
+        self.fill_challenge_units(Label::Units, output)?;
         self.pattern
             .end_challenge::<u8>(label, Length::Fixed(output.len()))?;
         Ok(self)
@@ -354,11 +354,11 @@ where
 {
     fn public_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
         self.pattern
-            .begin_public::<u8>(label, Length::Fixed(size))?;
+            .begin_public::<u8>(label.clone(), Length::Fixed(size))?;
         self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Public,
-            Label::UNITS,
+            Label::Units,
             Length::Fixed(size),
         ))?;
         self.pattern.end_public::<u8>(label, Length::Fixed(size))?;
@@ -367,11 +367,11 @@ where
 
     fn message_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
         self.pattern
-            .begin_message::<u8>(label, Length::Fixed(size))?;
+            .begin_message::<u8>(label.clone(), Length::Fixed(size))?;
         self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::UNITS,
+            Label::Units,
             Length::Fixed(size),
         ))?;
         self.pattern.end_message::<u8>(label, Length::Fixed(size))?;
@@ -380,11 +380,11 @@ where
 
     fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
         self.pattern
-            .begin_challenge::<u8>(label, Length::Fixed(size))?;
+            .begin_challenge::<u8>(label.clone(), Length::Fixed(size))?;
         self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::UNITS,
+            Label::Units,
             Length::Fixed(size),
         ))?;
         self.pattern
@@ -463,14 +463,14 @@ mod tests {
     #[test]
     fn test_fill_next_units_with_message() {
         // Create pattern using high-level method
-        let mut pattern = PatternState::<u8>::new();
-        let _ = pattern.message_units(Label::UNITS, 3);
+        let mut pattern = PatternState::new();
+        let _ = pattern.message_units(Label::Units, 3);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"abc");
         let mut buf = [0u8; 3];
 
-        assert!(vs.fill_next_units(Label::UNITS, &mut buf).is_ok());
+        assert!(vs.fill_next_units(Label::Units, &mut buf).is_ok());
         assert_eq!(buf, *b"abc");
         assert_eq!(*vs.duplex_sponge.absorbed.borrow(), b"abc");
         vs.finalize().expect("Failed to finalize");
@@ -478,7 +478,7 @@ mod tests {
 
     #[test]
     fn test_new_verifier_state_constructs_correctly() {
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
         let transcript = b"abc";
@@ -491,21 +491,21 @@ mod tests {
     #[test]
     fn test_fill_next_units_with_insufficient_data_errors() {
         // Create pattern with more data than available
-        let mut pattern = PatternState::<u8>::new();
-        let _ = pattern.message_units(Label::UNITS, 4);
+        let mut pattern = PatternState::new();
+        let _ = pattern.message_units(Label::Units, 4);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"xy");
         let mut buf = [0u8; 4];
 
-        assert!(vs.fill_next_units(Label::UNITS, &mut buf).is_err());
+        assert!(vs.fill_next_units(Label::Units, &mut buf).is_err());
         vs.abort().expect("Failed to abort");
     }
 
     #[test]
     fn test_ratcheting_success() {
         // Create pattern with ratchet
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.ratchet();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -518,7 +518,7 @@ mod tests {
     #[test]
     fn test_unit_transcript_public_units() {
         // Create pattern with public units
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.public_units(Label::from("public_units"), 2);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -531,7 +531,7 @@ mod tests {
     #[test]
     fn test_unit_transcript_fill_challenge_units() {
         // Create pattern with challenge
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.challenge_units(Label::from("challenge"), 4);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -548,7 +548,7 @@ mod tests {
     #[test]
     fn test_fill_next_bytes_impl() {
         // Create pattern with message bytes
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .message_bytes(Label::from("bytes"), 3)
             .expect("Failed to create pattern");
@@ -565,7 +565,7 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_valid_hint() {
         // Create pattern with hint
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.hint_bytes_dynamic(Label::from("hint_bytes"));
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_empty_hint() {
         // Create pattern with hint
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.hint_bytes_dynamic(Label::from("hint_bytes"));
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -613,7 +613,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_verifier_no_hint_op() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .public_bytes(Label::custom("public_bytes"), 2)
             .unwrap();
@@ -627,7 +627,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_verifier_length_prefix_too_short() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .hint_bytes_dynamic(Label::custom("hint_bytes"))
             .expect("Failed to add hint bytes to pattern");
@@ -644,7 +644,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_verifier_declared_hint_too_long() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .hint_bytes_dynamic(Label::custom("hint_bytes"))
             .expect("Failed to add hint bytes to pattern");

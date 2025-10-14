@@ -17,7 +17,7 @@ pub type TestResult<T = ()> = Result<T, PatternError>;
 pub fn pattern_with_message_bytes(label: &'static str, size: usize) -> TestResult<Arc<crate::pattern::InteractionPattern>> {
     use crate::codecs::bytes::Pattern;
     
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.message_bytes(Label::custom(label), size)?;
     Ok(Arc::new(pattern.finalize()?))
 }
@@ -26,7 +26,7 @@ pub fn pattern_with_message_bytes(label: &'static str, size: usize) -> TestResul
 pub fn pattern_with_public_units(label: &'static str, size: usize) -> TestResult<Arc<crate::pattern::InteractionPattern>> {
     use crate::codecs::unit::Pattern;
     
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.public_units(Label::custom(label), size)?;
     Ok(Arc::new(pattern.finalize()?))
 }
@@ -35,7 +35,7 @@ pub fn pattern_with_public_units(label: &'static str, size: usize) -> TestResult
 pub fn pattern_with_challenge(label: &'static str, size: usize) -> TestResult<Arc<crate::pattern::InteractionPattern>> {
     use crate::codecs::unit::Pattern;
     
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.challenge_units(Label::custom(label), size)?;
     Ok(Arc::new(pattern.finalize()?))
 }
@@ -44,7 +44,7 @@ pub fn pattern_with_challenge(label: &'static str, size: usize) -> TestResult<Ar
 pub fn pattern_with_ratchet() -> TestResult<Arc<crate::pattern::InteractionPattern>> {
     use crate::codecs::unit::Pattern;
     
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.ratchet()?;
     Ok(Arc::new(pattern.finalize()?))
 }
@@ -53,14 +53,14 @@ pub fn pattern_with_ratchet() -> TestResult<Arc<crate::pattern::InteractionPatte
 pub fn pattern_with_dynamic_hint(label: &'static str) -> TestResult<Arc<crate::pattern::InteractionPattern>> {
     use crate::codecs::unit::Pattern;
     
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.hint_bytes_dynamic(Label::custom(label))?;
     Ok(Arc::new(pattern.finalize()?))
 }
 
 /// Helper to create an empty pattern
 pub fn empty_pattern() -> TestResult<Arc<crate::pattern::InteractionPattern>> {
-    let pattern = PatternState::<u8>::new();
+    let pattern = PatternState::new();
     Ok(Arc::new(pattern.finalize()?))
 }
 
@@ -100,7 +100,7 @@ where
     F: FnOnce(&mut ProverState<H, u8, rand::rngs::OsRng>) -> TestResult<Vec<u8>>,
 {
     // Build pattern
-    let mut pattern_state = PatternState::<u8>::new();
+    let mut pattern_state = PatternState::new();
     pattern_builder(&mut pattern_state)?;
     let pattern = Arc::new(pattern_state.finalize()?);
     

@@ -36,6 +36,8 @@ asm = ["keccak/asm", "keccak/simd"]
 typed = []
 
 [dev-dependencies]
+ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
+ark-bn254.workspace = true
 ark-std = { workspace = true }
 sha2 = { workspace = true }
 blake2 = { workspace = true }
@@ -67,6 +69,10 @@ required-features = ["arkworks-algebra"]
 
 [[example]]
 name = "bulletproof"
+required-features = ["arkworks-algebra"]
+
+[[example]]
+name = "whir"
 required-features = ["arkworks-algebra"]
 
 [[example]]

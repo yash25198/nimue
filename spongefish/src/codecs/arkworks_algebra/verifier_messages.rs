@@ -10,7 +10,7 @@ use crate::{
 };
 
 // ============================================================================
-// VERIFIER IMPLEMENTATIONS FOR u8 (byte-based operations)
+// VERIFIER IMPLEMENTATIONS FOR u8 (unit-basedoperations)
 // ============================================================================
 
 impl<G, H> CommonGroupToUnit<G> for VerifierState<'_, H, u8>
@@ -44,7 +44,7 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.public_bytes(Label::PUBLIC, &buf)?;
+        self.public_bytes(Label::Public, &buf)?;
         Ok(buf)
     }
 }
@@ -67,8 +67,8 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         self.pattern
-            .begin_challenge::<F>(label, Length::Fixed(output.len()))?;
-        self.fill_challenge_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
+            .begin_challenge::<F>(label.clone(), Length::Fixed(output.len()))?;
+        self.fill_challenge_bytes(Label::BaseFieldCoefficients, &mut buf)?;
         self.pattern
             .end_challenge::<F>(label, Length::Fixed(output.len()))?;
         // Convert bytes to field elements by chunking the buffer
@@ -116,7 +116,7 @@ where
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        self.public_units(Label::PUBLIC, &flattened)?;
+        self.public_units(Label::Public, &flattened)?;
         Ok(())
     }
 }
@@ -142,7 +142,7 @@ where
         for point in input {
             let affine = point.into_affine();
             let (x, y) = affine.xy().unwrap();
-            self.public_units(label, &[x, y])?;
+            self.public_units(label.clone(), &[x, y])?;
         }
         Ok(())
     }
@@ -169,7 +169,7 @@ where
         for point in input {
             let affine = point.into_affine();
             let (x, y) = affine.xy().unwrap();
-            self.public_units(label, &[x, y])?;
+            self.public_units(label.clone(), &[x, y])?;
         }
         Ok(())
     }
@@ -182,7 +182,7 @@ where
 {
     fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
         for &byte in input {
-            self.public_units(label, &[Fp::from(byte)])?;
+            self.public_units(label.clone(), &[Fp::from(byte)])?;
         }
         Ok(self)
     }
@@ -204,7 +204,7 @@ where
                 output.len(),
             );
             let mut tmp = [Fp::from(0); 1];
-            self.fill_challenge_units(label, &mut tmp)?;
+            self.fill_challenge_units(label.clone(), &mut tmp)?;
             let buf = tmp[0].into_bigint().to_bytes_le();
             output[..len_good].copy_from_slice(&buf[..len_good]);
 
@@ -241,7 +241,6 @@ mod tests {
 
     /// Base field type using the BabyBear configuration.
     pub type BabyBear = Fp64<MontBackend<BabybearConfig, 1>>;
-
     #[test]
     fn test_unit_write_read_babybear_roundtrip() {
         let mut rng = ark_std::test_rng();
@@ -258,25 +257,29 @@ mod tests {
         // Round-trip check
         assert_eq!(values, decoded, "Unit read/write roundtrip failed");
     }
-
     #[test]
     fn test_common_field_to_unit_bytes() {
         let mut rng = ark_std::test_rng();
         let values = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
         let mut values2 = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
 
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
-            &mut pattern,
-            Label::from("tag"),
-            2,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<BabyBear>(Label::from("tag"), 2)
+            .unwrap();
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover =
             ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
         let _ = prover.message_scalars(Label::from("tag"), &values);
+
+        // Verify narg_string
+        let mut expected_bytes = Vec::new();
+        for v in &values {
+            v.serialize_compressed(&mut expected_bytes).unwrap();
+        }
+        assert_eq!(prover.narg_string(), expected_bytes);
+
         let proof = prover.finalize().unwrap();
 
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
@@ -296,25 +299,23 @@ mod tests {
         // Generator of the curve group
         let point = Curve::generator();
 
-        // Test that group element serialization is consistent.
-        // This is a simple serialization test, not a full protocol test.
-
         // Manual serialization for comparison
         let mut expected = Vec::new();
         point.serialize_compressed(&mut expected).unwrap();
 
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as GroupPattern<Curve>>::message_points(
-            &mut pattern,
-            Label::custom("generator"),
-            1,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_points::<Curve>(Label::custom("generator"), 1)
+            .unwrap();
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover =
             ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
         let _ = prover.message_points(Label::custom("generator"), &[point]);
+
+        // Verify narg_string matches expected serialization
+        assert_eq!(prover.narg_string(), expected);
+
         let proof = prover.finalize().unwrap();
 
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
@@ -345,14 +346,11 @@ mod tests {
 
     #[test]
     fn test_unit_to_field_fill_challenge_scalars_u8() {
-        // Create a pattern with a challenge scalar
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
-            &mut pattern,
-            Label::from("tag"),
-            1,
-        )
-        .unwrap();
+        // Create a pattern with a message scalar (not challenge)
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<BabyBear>(Label::from("tag"), 1)
+            .unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
@@ -362,7 +360,12 @@ mod tests {
             .message_scalars(Label::from("tag"), &mut out)
             .unwrap();
 
-        // Finalize the prover to avoid panic on drop
+        // Verify narg_string
+        let mut expected = Vec::new();
+        BabyBear::ONE.serialize_compressed(&mut expected).unwrap();
+        assert_eq!(prover.narg_string(), expected);
+
+        // Finalize the prover to get the proof
         let proof = prover.finalize().unwrap();
 
         let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
@@ -373,7 +376,7 @@ mod tests {
             .unwrap();
         verifier.finalize().unwrap();
 
-        assert_eq!(out[0], BabyBear::ONE, "Challenge should be zero");
+        assert_eq!(out[0], BabyBear::ONE, "Scalar should be ONE");
     }
 
     #[test]

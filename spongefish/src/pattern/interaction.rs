@@ -1,4 +1,5 @@
 use core::{any::type_name, fmt::Display};
+use std::sync::Arc;
 
 /// A single abstract prover-verifier interaction.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -21,45 +22,64 @@ pub struct Interaction {
 }
 
 /// Labels for interactions
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-pub struct Label(&'static str);
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum Label {
+    Bytes,
+    Units,
+    BaseFieldCoefficients,
+    SerializedGroup,
+    Public,
+    Ratchet,
+    Protocol,
+    Hint,
+
+    Custom(Arc<str>),
+}
 
 impl Label {
-    /// Create a label from a static string
-    pub const fn new(s: &'static str) -> Self {
-        Self(s)
+    /// Create a custom label from any string-like type
+    pub fn custom(s: impl Into<Arc<str>>) -> Self {
+        Self::Custom(s.into())
     }
-
-    /// Predefined common labels as constants
-    pub const BYTES: Self = Self("bytes");
-    pub const UNITS: Self = Self("units");
-    pub const COORDINATES: Self = Self("coordinates");
-    pub const BASE_FIELD_COEFFICIENTS: Self = Self("base-field-coefficients");
-    pub const BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN: Self =
-        Self("base-field-coefficients-little-endian");
-    pub const SERIALIZED_GROUP: Self = Self("serialized-group");
-    pub const PUBLIC: Self = Self("public");
-    pub const RATCHET: Self = Self("ratchet");
-    pub const PROTOCOL: Self = Self("protocol");
-    pub const HINT: Self = Self("hint");
 
     /// Get the string representation
-    pub const fn as_str(&self) -> &'static str {
-        self.0
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Bytes => "bytes",
+            Self::Units => "units",
+            Self::BaseFieldCoefficients => "base-field-coefficients",
+            Self::SerializedGroup => "serialized-group",
+            Self::Public => "public",
+            Self::Ratchet => "ratchet",
+            Self::Protocol => "protocol",
+            Self::Hint => "hint",
+            Self::Custom(s) => s.as_ref(),
+        }
     }
 }
 
-impl From<&'static str> for Label {
-    fn from(s: &'static str) -> Self {
-        Self(s)
+// Conversions
+impl From<String> for Label {
+    fn from(s: String) -> Self {
+        Self::Custom(Arc::from(s))
     }
 }
 
-// Usage with string literals (which are 'static)
-impl Label {
-    /// Convenience for creating labels in a const context
-    pub const fn custom(s: &'static str) -> Self {
-        Self(s)
+impl From<Arc<str>> for Label {
+    fn from(s: Arc<str>) -> Self {
+        Self::Custom(s)
+    }
+}
+
+impl From<&str> for Label {
+    fn from(s: &str) -> Self {
+        Self::Custom(Arc::from(s))
+    }
+}
+
+impl From<&String> for Label {
+    fn from(s: &String) -> Self {
+        Self::Custom(Arc::from(s.as_str()))
     }
 }
 

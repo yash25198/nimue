@@ -140,11 +140,11 @@ pub mod keccak;
 pub mod codecs;
 
 pub mod pattern;
+/// Prover's internal state and transcript generation.
+mod prover;
 /// Unit-tests.
 #[cfg(test)]
 mod tests;
-/// Prover's internal state and transcript generation.
-mod prover;
 
 /// Traits for byte support.
 pub mod traits;

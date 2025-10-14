@@ -13,7 +13,7 @@ use crate::{
 };
 
 // ============================================================================
-// PROVER IMPLEMENTATIONS FOR u8 (byte-based operations)
+// PROVER IMPLEMENTATIONS FOR u8 (unit-basedoperations)
 // ============================================================================
 
 impl<F, H, R> FieldToUnitSerialize<F> for ProverState<H, u8, R>
@@ -32,7 +32,7 @@ where
         }
 
         // Add bytes directly - this matches the pattern's inner message_bytes call
-        self.message_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &buf)?;
+        self.message_bytes(Label::BaseFieldCoefficients, &buf)?;
 
         Ok(self)
     }
@@ -54,8 +54,8 @@ where
         }
 
         // Add bytes directly - this matches the pattern's inner message_bytes call
-        // The pattern system expects this to use SERIALIZED_GROUP label
-        self.message_bytes(Label::SERIALIZED_GROUP, &buf)?;
+        // The pattern system expects this to use SerializedGroup label
+        self.message_bytes(Label::SerializedGroup, &buf)?;
 
         Ok(self)
     }
@@ -76,7 +76,7 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.public_bytes(Label::PUBLIC, &buf)?;
+        self.public_bytes(Label::Public, &buf)?;
         Ok(buf)
     }
 }
@@ -120,7 +120,7 @@ where
             .collect();
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::BASE_FIELD_COEFFICIENTS, &flattened)?;
+        self.add_units(Label::BaseFieldCoefficients, &flattened)?;
 
         Ok(self)
     }
@@ -142,7 +142,7 @@ where
         &mut self,
         input: &[ark_ec::short_weierstrass::Projective<P>],
     ) -> Result<&mut Self, PatternError> {
-        // Extract coordinates
+        // Extract SerializedGroup
         let mut coords = Vec::with_capacity(input.len() * 2);
         for point in input {
             let affine = point.into_affine();
@@ -152,7 +152,7 @@ where
         }
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::COORDINATES, &coords)?;
+        self.add_units(Label::SerializedGroup, &coords)?;
 
         Ok(self)
     }
@@ -174,7 +174,7 @@ where
         &mut self,
         input: &[ark_ec::twisted_edwards::Projective<P>],
     ) -> Result<&mut Self, PatternError> {
-        // Extract coordinates
+        // Extract SerializedGroup
         let mut coords = Vec::with_capacity(input.len() * 2);
         for point in input {
             let affine = point.into_affine();
@@ -184,7 +184,7 @@ where
         }
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::COORDINATES, &coords)?;
+        self.add_units(Label::SerializedGroup, &coords)?;
 
         Ok(self)
     }
@@ -204,7 +204,7 @@ where
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        self.public_units(Label::PUBLIC, &flattened)?;
+        self.public_units(Label::Public, &flattened)?;
         Ok(())
     }
 }
@@ -279,7 +279,7 @@ where
 {
     fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
         for &byte in input {
-            self.public_units(label, &[Fp::from(byte)])?;
+            self.public_units(label.clone(), &[Fp::from(byte)])?;
         }
         Ok(self)
     }
@@ -303,8 +303,8 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         self.pattern
-            .begin_challenge::<F>(label, Length::Fixed(output.len()))?;
-        self.fill_challenge_bytes(Label::BASE_FIELD_COEFFICIENTS_LITTLE_ENDIAN, &mut buf)?;
+            .begin_challenge::<F>(label.clone(), Length::Fixed(output.len()))?;
+        self.fill_challenge_bytes(Label::BaseFieldCoefficients, &mut buf)?;
         self.pattern
             .end_challenge::<F>(label, Length::Fixed(output.len()))?;
 
@@ -344,6 +344,7 @@ mod tests {
     use ark_curve25519::EdwardsProjective;
     use ark_ec::PrimeGroup;
     use ark_ff::{Fp64, MontBackend, MontConfig, UniformRand};
+    use ark_serialize::CanonicalSerialize;
 
     use super::*;
     use crate::{
@@ -377,13 +378,10 @@ mod tests {
         ];
 
         // Create proper pattern with field message
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
-            &mut pattern,
-            Label::custom("scalars"),
-            3,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<BabyBear>(Label::custom("scalars"), 3)
+            .unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
@@ -392,6 +390,81 @@ mod tests {
         assert!(prover
             .message_scalars(Label::custom("scalars"), &scalars)
             .is_ok());
+
+        // Verify narg_string contains the serialized scalars
+        let mut expected_bytes = Vec::new();
+        for scalar in &scalars {
+            scalar.serialize_compressed(&mut expected_bytes).unwrap();
+        }
+        assert_eq!(prover.narg_string(), expected_bytes);
+
+        prover.finalize().unwrap();
+    }
+
+    #[test]
+    fn test_add_scalars_u8_unit() {
+        let f0 = Fr::from(5u64);
+        let f1 = Fr::from(42u64);
+
+        // Create proper pattern
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<Fr>(Label::custom("fr_scalars"), 2)
+            .unwrap();
+        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        assert!(prover
+            .message_scalars(Label::custom("fr_scalars"), &[f0, f1])
+            .is_ok());
+
+        // Verify narg_string
+        let mut expected = Vec::new();
+        f0.serialize_compressed(&mut expected).unwrap();
+        f1.serialize_compressed(&mut expected).unwrap();
+        assert_eq!(prover.narg_string(), expected);
+
+        prover.finalize().unwrap();
+    }
+
+    #[test]
+    fn test_add_points_u8_unit() {
+        let point = G::generator();
+
+        // Create proper pattern
+        let mut pattern = PatternState::new();
+        pattern
+            .message_points::<G>(Label::custom("point"), 1)
+            .unwrap();
+        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        assert!(prover
+            .message_points(Label::custom("point"), &[point])
+            .is_ok());
+
+        // Verify narg_string
+        let mut expected = Vec::new();
+        point.serialize_compressed(&mut expected).unwrap();
+        assert_eq!(prover.narg_string(), expected);
+
+        prover.finalize().unwrap();
+    }
+
+    #[test]
+    fn test_add_bytes_with_pattern() {
+        let input = b"hello world!";
+
+        // Create proper pattern
+        let mut pattern = PatternState::new();
+        pattern.message_bytes(Label::Bytes, input.len()).unwrap();
+        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        assert!(prover.message_bytes(Label::Bytes, input).is_ok());
+
+        // Verify narg_string
+        assert_eq!(prover.narg_string(), input);
 
         prover.finalize().unwrap();
     }
@@ -407,7 +480,7 @@ mod tests {
 
         // Empty pattern - should fail
         let pattern = Arc::new(
-            PatternState::<u8>::new()
+            PatternState::new()
                 .finalize()
                 .expect("Failed to finalize pattern"),
         );
@@ -420,57 +493,12 @@ mod tests {
     }
 
     #[test]
-    fn test_add_scalars_u8_unit() {
-        let f0 = Fr::from(5u64);
-        let f1 = Fr::from(42u64);
-
-        // Create proper pattern
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
-            &mut pattern,
-            Label::custom("fr_scalars"),
-            2,
-        )
-        .unwrap();
-        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
-
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
-        assert!(prover
-            .message_scalars(Label::custom("fr_scalars"), &[f0, f1])
-            .is_ok());
-
-        prover.finalize().unwrap();
-    }
-
-    #[test]
-    fn test_add_points_u8_unit() {
-        let point = G::generator();
-
-        // Create proper pattern
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as GroupPattern<G>>::message_points(
-            &mut pattern,
-            Label::custom("point"),
-            1,
-        )
-        .unwrap();
-        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
-
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
-        assert!(prover
-            .message_points(Label::custom("point"), &[point])
-            .is_ok());
-
-        prover.finalize().unwrap();
-    }
-
-    #[test]
     fn test_add_points_pattern_mismatch() {
         let point = G::generator();
 
         // Empty pattern - should fail
         let pattern = Arc::new(
-            PatternState::<u8>::new()
+            PatternState::new()
                 .finalize()
                 .expect("Failed to finalize pattern"),
         );
@@ -483,33 +511,18 @@ mod tests {
     }
 
     #[test]
-    fn test_add_bytes_with_pattern() {
-        let input = b"hello world!";
-
-        // Create proper pattern
-        let mut pattern = PatternState::<u8>::new();
-        pattern.message_bytes(Label::BYTES, input.len()).unwrap();
-        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
-
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
-        assert!(prover.message_bytes(Label::BYTES, input).is_ok());
-
-        prover.finalize().unwrap();
-    }
-
-    #[test]
     fn test_add_bytes_pattern_mismatch() {
         let input = b"hello world!";
 
         // Empty pattern - should fail
         let pattern = Arc::new(
-            PatternState::<u8>::new()
+            PatternState::new()
                 .finalize()
                 .expect("Failed to finalize pattern"),
         );
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-        let result = prover.add_bytes(Label::BYTES, input);
+        let result = prover.add_bytes(Label::Bytes, input);
         assert!(result.is_err(), "Expected error due to pattern mismatch");
 
         prover.abort().unwrap();
@@ -521,13 +534,10 @@ mod tests {
         let scalars = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
 
         // Create pattern
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
-            &mut pattern,
-            Label::custom("data"),
-            2,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<BabyBear>(Label::custom("data"), 2)
+            .unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         // Prover
