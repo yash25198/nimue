@@ -263,13 +263,10 @@ mod tests {
         let values = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
         let mut values2 = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
 
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
-            &mut pattern,
-            Label::from("tag"),
-            2,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<BabyBear>(Label::from("tag"), 2)
+            .unwrap();
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover =
@@ -306,13 +303,10 @@ mod tests {
         let mut expected = Vec::new();
         point.serialize_compressed(&mut expected).unwrap();
 
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as GroupPattern<Curve>>::message_points(
-            &mut pattern,
-            Label::custom("generator"),
-            1,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_points::<Curve>(Label::custom("generator"), 1)
+            .unwrap();
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover =
@@ -353,13 +347,10 @@ mod tests {
     #[test]
     fn test_unit_to_field_fill_challenge_scalars_u8() {
         // Create a pattern with a message scalar (not challenge)
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
-            &mut pattern,
-            Label::from("tag"),
-            1,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<BabyBear>(Label::from("tag"), 1)
+            .unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);

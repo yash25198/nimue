@@ -187,7 +187,7 @@ mod tests {
         use ark_bls12_381::Fr as F;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn test_fill_next_scalars_fp_unit() {
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<BabyBear>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -227,7 +227,7 @@ mod tests {
         type G = EdwardsProjective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -247,7 +247,7 @@ mod tests {
         type G = G1Projective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -267,7 +267,7 @@ mod tests {
         type G = EdwardsProjective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -287,7 +287,7 @@ mod tests {
         type G = G1Projective;
 
         // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 

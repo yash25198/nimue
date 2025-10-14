@@ -1,7 +1,5 @@
-use std::marker::PhantomData;
-
 use super::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, PatternError};
-use crate::{codecs::unit, Unit};
+use crate::codecs::unit;
 
 /// Records an interaction pattern.
 ///
@@ -9,23 +7,16 @@ use crate::{codecs::unit, Unit};
 ///
 /// Panics on [`Drop`] if there are unfinished interactions.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Default)]
-pub struct PatternState<U = u8>
-where
-    U: Unit,
-{
+pub struct PatternState {
     /// Recorded interactions.
     interactions: Vec<Interaction>,
     /// Stack of open hierarchical interactions
     hierarchy_stack: Vec<usize>, // Track hierarchy
     /// Whether the transcript playback has been finalized.
     finalized: bool,
-    _unit: PhantomData<U>,
 }
 
-impl<U> PatternState<U>
-where
-    U: Unit,
-{
+impl PatternState {
     /// Maximum nesting depth for hierarchical interactions.
     const MAX_NESTING_DEPTH: usize = 64;
     #[must_use]
@@ -34,7 +25,6 @@ where
             interactions: Vec::new(),
             hierarchy_stack: Vec::new(),
             finalized: false,
-            _unit: PhantomData,
         }
     }
 
@@ -54,7 +44,7 @@ where
     /// # Example
     ///
     /// ```ignore
-    /// let mut pattern = PatternState::<u8>::new();
+    /// let mut pattern = PatternState::new();
     /// pattern.message_bytes(Label::custom("msg"), 32)?;
     /// let pattern = pattern.finalize()?;
     /// ```
@@ -153,10 +143,7 @@ where
     }
 }
 
-impl<U> super::Pattern for PatternState<U>
-where
-    U: Unit,
-{
+impl super::Pattern for PatternState {
     fn abort(&mut self) -> Result<(), PatternError> {
         if self.finalized {
             return Err(PatternError::AlreadyFinalized);
@@ -186,11 +173,8 @@ where
     }
 }
 
-impl<U> unit::Pattern for PatternState<U>
-where
-    U: Unit,
-{
-    type Unit = U;
+impl unit::Pattern for PatternState {
+    type Unit = u8;
 
     fn ratchet(&mut self) -> Result<&mut Self, PatternError> {
         self.interact(Interaction::new::<()>(
@@ -203,7 +187,7 @@ where
     }
 
     fn public_unit(&mut self, label: Label) -> Result<&mut Self, PatternError> {
-        self.interact(Interaction::new::<U>(
+        self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Public,
             label,
@@ -213,7 +197,7 @@ where
     }
 
     fn public_units(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.interact(Interaction::new::<U>(
+        self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Public,
             label,
@@ -223,7 +207,7 @@ where
     }
 
     fn message_unit(&mut self, label: Label) -> Result<&mut Self, PatternError> {
-        self.interact(Interaction::new::<U>(
+        self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
             label,
@@ -233,7 +217,7 @@ where
     }
 
     fn message_units(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.interact(Interaction::new::<U>(
+        self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
             label,
@@ -243,7 +227,7 @@ where
     }
 
     fn challenge_unit(&mut self, label: Label) -> Result<&mut Self, PatternError> {
-        self.interact(Interaction::new::<U>(
+        self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Challenge,
             label,
@@ -253,7 +237,7 @@ where
     }
 
     fn challenge_units(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.interact(Interaction::new::<U>(
+        self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Challenge,
             label,

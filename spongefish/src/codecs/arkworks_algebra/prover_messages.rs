@@ -378,13 +378,10 @@ mod tests {
         ];
 
         // Create proper pattern with field message
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
-            &mut pattern,
-            Label::custom("scalars"),
-            3,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<BabyBear>(Label::custom("scalars"), 3)
+            .unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
@@ -410,13 +407,10 @@ mod tests {
         let f1 = Fr::from(42u64);
 
         // Create proper pattern
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
-            &mut pattern,
-            Label::custom("fr_scalars"),
-            2,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<Fr>(Label::custom("fr_scalars"), 2)
+            .unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
@@ -438,13 +432,10 @@ mod tests {
         let point = G::generator();
 
         // Create proper pattern
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as GroupPattern<G>>::message_points(
-            &mut pattern,
-            Label::custom("point"),
-            1,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_points::<G>(Label::custom("point"), 1)
+            .unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
@@ -465,7 +456,7 @@ mod tests {
         let input = b"hello world!";
 
         // Create proper pattern
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern.message_bytes(Label::Bytes, input.len()).unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -489,7 +480,7 @@ mod tests {
 
         // Empty pattern - should fail
         let pattern = Arc::new(
-            PatternState::<u8>::new()
+            PatternState::new()
                 .finalize()
                 .expect("Failed to finalize pattern"),
         );
@@ -507,7 +498,7 @@ mod tests {
 
         // Empty pattern - should fail
         let pattern = Arc::new(
-            PatternState::<u8>::new()
+            PatternState::new()
                 .finalize()
                 .expect("Failed to finalize pattern"),
         );
@@ -525,7 +516,7 @@ mod tests {
 
         // Empty pattern - should fail
         let pattern = Arc::new(
-            PatternState::<u8>::new()
+            PatternState::new()
                 .finalize()
                 .expect("Failed to finalize pattern"),
         );
@@ -543,13 +534,10 @@ mod tests {
         let scalars = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
 
         // Create pattern
-        let mut pattern = PatternState::<u8>::new();
-        <PatternState<u8> as FieldPattern<BabyBear>>::message_scalars(
-            &mut pattern,
-            Label::custom("data"),
-            2,
-        )
-        .unwrap();
+        let mut pattern = PatternState::new();
+        pattern
+            .message_scalars::<BabyBear>(Label::custom("data"), 2)
+            .unwrap();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         // Prover

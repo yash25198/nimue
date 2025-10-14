@@ -15,7 +15,7 @@ use spongefish::{
 
 // First, let's compute the actual IV from the pattern
 fn compute_protocol_iv() -> (u128, u128) {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
 
     <PatternState<u8> as GroupPattern<Curve>>::message_points(
         &mut pattern,
@@ -77,7 +77,7 @@ define_protocol! {
 }
 
 fn create_schnorr_pattern() -> PatternState<u8> {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
 
     <PatternState<u8> as GroupPattern<Curve>>::message_points(
         &mut pattern,

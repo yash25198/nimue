@@ -11,7 +11,7 @@ pub trait Pattern {
 }
 
 /// Implementation where `Unit = u8`
-impl Pattern for PatternState<u8> {
+impl Pattern for PatternState {
     fn public_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
         self.begin_public::<u8>(label.clone(), Length::Fixed(size))?;
         self.public_units(Label::Units, size)?;

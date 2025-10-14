@@ -22,18 +22,18 @@ use spongefish::{
     DefaultHash, ProofError, ProofResult, ProverState, VerifierState,
 };
 
-fn bulletproof_pattern<G: CurveGroup>(size: usize) -> PatternState<u8>
+fn bulletproof_pattern<G: CurveGroup>(size: usize) -> PatternState
 where
-    PatternState<u8>: GroupPattern<G> + FieldPattern<G::ScalarField>,
+    PatternState: GroupPattern + FieldPattern,
 {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
 
     // Statement: Pedersen commitment (public input)
     pattern
         .begin_protocol(Label::custom("bulletproof"))
         .expect("Failed to begin protocol");
     pattern
-        .message_points(Label::custom("commitment"), 1)
+        .message_points::<G>(Label::custom("commitment"), 1)
         .expect("Failed to add commitment pattern");
     pattern.ratchet().expect("Failed to ratchet");
 
@@ -41,16 +41,16 @@ where
     let num_rounds = log2(size);
     for _round in 0..num_rounds {
         pattern
-            .message_points(Label::custom("round"), 2)
+            .message_points::<G>(Label::custom("round"), 2)
             .expect("Failed to add round pattern");
         pattern
-            .message_scalars(Label::custom("challenge"), 1)
+            .message_scalars::<G::ScalarField>(Label::custom("challenge"), 1)
             .expect("Failed to add challenge pattern");
     }
 
     // Final message: a and b scalars
     pattern
-        .message_scalars(Label::custom("final"), 2)
+        .message_scalars::<G::ScalarField>(Label::custom("final"), 2)
         .expect("Failed to add final pattern");
     pattern
         .end_protocol(Label::custom("bulletproof"))

@@ -18,7 +18,7 @@ use ark_crypto_primitives::{
     crh::{CRHScheme, TwoToOneCRHScheme},
     merkle_tree::Config,
 };
-use ark_ff::{Field, PrimeField, UniformRand};
+use ark_ff::UniformRand;
 use rand::rngs::OsRng;
 use spongefish::{
     codecs::{
@@ -141,60 +141,42 @@ type Commitment = Fr;
 // WHIR Interaction Pattern
 // ============================================================================
 
-fn whir_pattern(num_vars: usize) -> PatternState<u8>
+fn whir_pattern(num_vars: usize) -> PatternState
 where
-    PatternState<u8>: FieldPattern<Fr>,
+    PatternState: FieldPattern,
 {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
 
     pattern.begin_protocol(Label::from("whir")).unwrap();
 
     // Commitment phase
-    <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
-        &mut pattern,
-        Label::from("commitment"),
-        1,
-    )
-    .unwrap();
+    pattern
+        .message_scalars::<Fr>(Label::from("commitment"), 1)
+        .unwrap();
 
     // Challenge: evaluation point
-    <PatternState<u8> as FieldPattern<Fr>>::challenge_scalars(
-        &mut pattern,
-        Label::from("eval_point"),
-        num_vars,
-    )
-    .unwrap();
+    pattern
+        .challenge_scalars::<Fr>(Label::from("eval_point"), num_vars)
+        .unwrap();
 
     // Query phase: claimed evaluation
-    <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
-        &mut pattern,
-        Label::from("claimed_eval"),
-        1,
-    )
-    .unwrap();
+    pattern
+        .message_scalars::<Fr>(Label::from("claimed_eval"), 1)
+        .unwrap();
 
     pattern.ratchet().unwrap();
 
     // Challenge phase (multiple rounds for folding)
     for round in 0..num_vars {
-        <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
-            &mut pattern,
-            Label::from(format!("round_{}_value", round)),
-            1,
-        )
-        .unwrap();
-        <PatternState<u8> as FieldPattern<Fr>>::challenge_scalars(
-            &mut pattern,
-            Label::from(format!("round_{}_challenge", round)),
-            1,
-        )
-        .unwrap();
-        <PatternState<u8> as FieldPattern<Fr>>::message_scalars(
-            &mut pattern,
-            Label::from(format!("round_{}_auth", round)),
-            1,
-        )
-        .unwrap();
+        pattern
+            .message_scalars::<Fr>(Label::from(format!("round_{}_value", round)), 1)
+            .unwrap();
+        pattern
+            .challenge_scalars::<Fr>(Label::from(format!("round_{}_challenge", round)), 1)
+            .unwrap();
+        pattern
+            .message_scalars::<Fr>(Label::from(format!("round_{}_auth", round)), 1)
+            .unwrap();
     }
 
     pattern.end_protocol(Label::from("whir")).unwrap();

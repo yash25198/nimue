@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn test_fill_next_units_with_message() {
         // Create pattern using high-level method
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.message_units(Label::Units, 3);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -478,7 +478,7 @@ mod tests {
 
     #[test]
     fn test_new_verifier_state_constructs_correctly() {
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
         let transcript = b"abc";
@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn test_fill_next_units_with_insufficient_data_errors() {
         // Create pattern with more data than available
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.message_units(Label::Units, 4);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -505,7 +505,7 @@ mod tests {
     #[test]
     fn test_ratcheting_success() {
         // Create pattern with ratchet
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.ratchet();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -518,7 +518,7 @@ mod tests {
     #[test]
     fn test_unit_transcript_public_units() {
         // Create pattern with public units
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.public_units(Label::from("public_units"), 2);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -531,7 +531,7 @@ mod tests {
     #[test]
     fn test_unit_transcript_fill_challenge_units() {
         // Create pattern with challenge
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.challenge_units(Label::from("challenge"), 4);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -548,7 +548,7 @@ mod tests {
     #[test]
     fn test_fill_next_bytes_impl() {
         // Create pattern with message bytes
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .message_bytes(Label::from("bytes"), 3)
             .expect("Failed to create pattern");
@@ -565,7 +565,7 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_valid_hint() {
         // Create pattern with hint
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.hint_bytes_dynamic(Label::from("hint_bytes"));
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -590,7 +590,7 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_empty_hint() {
         // Create pattern with hint
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         let _ = pattern.hint_bytes_dynamic(Label::from("hint_bytes"));
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -613,7 +613,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_verifier_no_hint_op() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .public_bytes(Label::custom("public_bytes"), 2)
             .unwrap();
@@ -627,7 +627,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_verifier_length_prefix_too_short() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .hint_bytes_dynamic(Label::custom("hint_bytes"))
             .expect("Failed to add hint bytes to pattern");
@@ -644,7 +644,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_verifier_declared_hint_too_long() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .hint_bytes_dynamic(Label::custom("hint_bytes"))
             .expect("Failed to add hint bytes to pattern");

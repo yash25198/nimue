@@ -17,7 +17,7 @@ use crate::{
 
 #[test]
 fn test_prover_rng_basic() {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.message_bytes(Label::Bytes, 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -39,7 +39,7 @@ fn test_prover_rng_basic() {
 
 #[test]
 fn test_prover_state_bytewriter() {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.message_bytes(Label::Bytes, 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -48,7 +48,7 @@ fn test_prover_state_bytewriter() {
     assert!(prover_state.message_bytes(Label::Bytes, &[1u8]).is_err());
 
     // Test public bytes (not in transcript)
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.public_bytes(Label::Public, 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -61,7 +61,7 @@ fn test_prover_state_bytewriter() {
 
 #[test]
 fn test_invalid_pattern_sequence() {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.message_bytes(Label::Bytes, 3).unwrap();
     pattern.challenge_bytes(Label::custom("chal"), 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
@@ -75,7 +75,7 @@ fn test_invalid_pattern_sequence() {
 
 #[test]
 fn test_deterministic() {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.message_bytes(Label::Bytes, 3).unwrap();
     pattern.challenge_bytes(Label::custom("chal"), 16).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
@@ -111,7 +111,7 @@ fn test_deterministic() {
 
 #[test]
 fn test_statistics() {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.message_bytes(Label::Bytes, 4).unwrap();
     pattern.ratchet().unwrap();
     pattern
@@ -142,7 +142,7 @@ fn test_statistics() {
 
 #[test]
 // fn test_transcript_readwrite() {
-//     let mut pattern = PatternState::<u8>::new();
+//     let mut pattern = PatternState::new();
 //     pattern.message_units(Label::Units, 10).unwrap();
 //     pattern.challenge_bytes(Label::custom("chal"), 10).unwrap();
 //     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
@@ -167,7 +167,7 @@ fn test_statistics() {
 #[test]
 #[should_panic(expected = "UnexpectedInteraction")]
 fn test_incomplete_pattern() {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.message_units(Label::Units, 10).unwrap();
     pattern.challenge_bytes(Label::custom("chal"), 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
@@ -184,7 +184,7 @@ fn test_incomplete_pattern() {
 
 #[test]
 fn test_prover_empty_absorb() {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
     pattern.message_bytes(Label::Bytes, 1).unwrap();
     pattern.challenge_bytes(Label::custom("chal"), 1).unwrap();
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
@@ -207,7 +207,7 @@ fn test_prover_empty_absorb() {
 // {
 //     let bytes = b"yellow submarine";
 
-//     let mut pattern = PatternState::<u8>::new();
+//     let mut pattern = PatternState::new();
 //     pattern.message_bytes(Label::Bytes, 16).unwrap();
 //     pattern.challenge_bytes(Label::custom("control"), 16).unwrap();
 //     pattern.message_bytes(Label::custom("level2"), 1).unwrap();

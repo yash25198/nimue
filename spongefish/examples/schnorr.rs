@@ -34,25 +34,25 @@ use spongefish::{
 };
 
 /// Create the interaction pattern for Schnorr protocol
-fn schnorr_pattern<G: CurveGroup>() -> PatternState<u8>
+fn schnorr_pattern<G: CurveGroup>() -> PatternState
 where
-    PatternState<u8>: GroupPattern<G> + FieldPattern<G::ScalarField>,
+    PatternState: GroupPattern + FieldPattern,
 {
-    let mut pattern = PatternState::<u8>::new();
+    let mut pattern = PatternState::new();
 
     pattern.begin_protocol(Label::from("schnorr")).unwrap();
-    pattern.message_points(Label::from("generator"), 1).unwrap();
+    pattern.message_points::<G>(Label::from("generator"), 1).unwrap();
     pattern
-        .message_points(Label::from("public_key"), 1)
+        .message_points::<G>(Label::from("public_key"), 1)
         .unwrap();
     pattern.ratchet().unwrap();
     pattern
-        .message_points(Label::from("commitment"), 1)
+        .message_points::<G>(Label::from("commitment"), 1)
         .unwrap();
     pattern
-        .challenge_scalars(Label::from("challenge"), 1)
+        .challenge_scalars::<G::ScalarField>(Label::from("challenge"), 1)
         .unwrap();
-    pattern.message_scalars(Label::from("response"), 1).unwrap();
+    pattern.message_scalars::<G::ScalarField>(Label::from("response"), 1).unwrap();
     pattern.end_protocol(Label::from("schnorr")).unwrap();
 
     pattern

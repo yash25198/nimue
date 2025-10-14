@@ -442,7 +442,7 @@ mod tests {
 
     #[test]
     fn test_prover_state_add_units_and_rng_differs() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .message_bytes(Label::Bytes, 4)
             .expect("Failed to add message bytes");
@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn test_prover_state_public_units_does_not_affect_narg() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .public_units(Label::custom("public_units"), 4)
             .expect("Failed to add public units to pattern");
@@ -478,7 +478,7 @@ mod tests {
 
     #[test]
     fn test_prover_state_ratcheting_changes_rng_output() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern.ratchet().expect("Failed to add ratchet to pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn test_add_units_appends_to_narg_string() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .message_units(Label::Units, 3)
             .expect("Failed to add message units to pattern");
@@ -515,7 +515,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "UnexpectedInteraction")]
     fn test_add_units_too_many_elements_should_panic() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .message_units(Label::Units, 2)
             .expect("Failed to add message units to pattern");
@@ -529,7 +529,7 @@ mod tests {
 
     #[test]
     fn test_ratchet_works_when_expected() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern.ratchet().expect("Failed to add ratchet to pattern");
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
@@ -541,7 +541,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "UnexpectedInteraction")]
     fn test_ratchet_fails_when_not_expected() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .message_units(Label::Units, 4)
             .expect("Failed to add message units to pattern");
@@ -554,7 +554,7 @@ mod tests {
 
     #[test]
     fn test_fill_challenge_units() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .begin_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8))
             .expect("Failed to begin challenge");
@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn test_rng_entropy_changes_with_transcript() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .message_bytes(Label::Bytes, 3)
             .expect("Failed to add message bytes");
@@ -602,7 +602,7 @@ mod tests {
 
     #[test]
     fn test_add_units_multiple_accumulates() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .message_units(Label::Units, 2)
             .expect("Failed to add message units to pattern");
@@ -624,7 +624,7 @@ mod tests {
 
     #[test]
     fn test_narg_string_round_trip_check() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .message_units(Label::Units, 5)
             .expect("Failed to add message units to pattern");
@@ -638,7 +638,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_appends_hint_length_and_data() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .hint_bytes_dynamic(Label::custom("hint_bytes"))
             .expect("Failed to add hint bytes to pattern");
@@ -655,7 +655,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_empty_hint_is_encoded_correctly() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .hint_bytes_dynamic(Label::custom("hint_bytes"))
             .expect("Failed to add hint bytes to pattern");
@@ -673,7 +673,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_fails_if_hint_op_missing() {
-        let pattern = PatternState::<u8>::new()
+        let pattern = PatternState::new()
             .finalize()
             .expect("Failed to finalize pattern");
 
@@ -690,7 +690,7 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_is_deterministic() {
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         pattern
             .hint_bytes_dynamic(Label::custom("hint_bytes"))
             .expect("Failed to add hint bytes to pattern");
