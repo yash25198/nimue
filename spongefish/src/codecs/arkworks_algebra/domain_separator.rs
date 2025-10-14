@@ -14,7 +14,7 @@ impl FieldPattern for PatternState {
     fn message_scalars<F: Field>(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         self.begin_message::<F>(label.clone(), Length::Fixed(count))?;
         self.message_bytes(
-            Label::BaseFieldCoefficientsLittleEndian,
+            Label::BaseFieldCoefficients,
             count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
         )?;
         self.end_message::<F>(label, Length::Fixed(count))?;
@@ -24,7 +24,7 @@ impl FieldPattern for PatternState {
     fn challenge_scalars<F: Field>(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
         self.begin_challenge::<F>(label.clone(), Length::Fixed(count))?;
         self.challenge_bytes(
-            Label::BaseFieldCoefficientsLittleEndian,
+            Label::BaseFieldCoefficients,
             count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
         )?;
         self.end_challenge::<F>(label, Length::Fixed(count))?;

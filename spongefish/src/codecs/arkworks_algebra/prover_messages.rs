@@ -32,7 +32,7 @@ where
         }
 
         // Add bytes directly - this matches the pattern's inner message_bytes call
-        self.message_bytes(Label::BaseFieldCoefficientsLittleEndian, &buf)?;
+        self.message_bytes(Label::BaseFieldCoefficients, &buf)?;
 
         Ok(self)
     }
@@ -142,7 +142,7 @@ where
         &mut self,
         input: &[ark_ec::short_weierstrass::Projective<P>],
     ) -> Result<&mut Self, PatternError> {
-        // Extract coordinates
+        // Extract SerializedGroup
         let mut coords = Vec::with_capacity(input.len() * 2);
         for point in input {
             let affine = point.into_affine();
@@ -152,7 +152,7 @@ where
         }
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::Coordinates, &coords)?;
+        self.add_units(Label::SerializedGroup, &coords)?;
 
         Ok(self)
     }
@@ -174,7 +174,7 @@ where
         &mut self,
         input: &[ark_ec::twisted_edwards::Projective<P>],
     ) -> Result<&mut Self, PatternError> {
-        // Extract coordinates
+        // Extract SerializedGroup
         let mut coords = Vec::with_capacity(input.len() * 2);
         for point in input {
             let affine = point.into_affine();
@@ -184,7 +184,7 @@ where
         }
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::Coordinates, &coords)?;
+        self.add_units(Label::SerializedGroup, &coords)?;
 
         Ok(self)
     }
@@ -304,7 +304,7 @@ where
 
         self.pattern
             .begin_challenge::<F>(label.clone(), Length::Fixed(output.len()))?;
-        self.fill_challenge_bytes(Label::BaseFieldCoefficientsLittleEndian, &mut buf)?;
+        self.fill_challenge_bytes(Label::BaseFieldCoefficients, &mut buf)?;
         self.pattern
             .end_challenge::<F>(label, Length::Fixed(output.len()))?;
 

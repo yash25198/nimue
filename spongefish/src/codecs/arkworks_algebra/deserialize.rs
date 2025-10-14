@@ -27,7 +27,7 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         // Read all bytes at once - this matches the pattern's single message_bytes call
-        self.fill_next_bytes(Label::BaseFieldCoefficientsLittleEndian, &mut buf)?;
+        self.fill_next_bytes(Label::BaseFieldCoefficients, &mut buf)?;
 
         // Deserialize each scalar from its chunk
         for (i, o) in output.iter_mut().enumerate() {
@@ -110,9 +110,9 @@ where
         &mut self,
         output: &mut [ark_ec::short_weierstrass::Projective<P>],
     ) -> ProofResult<&mut Self> {
-        // Read all coordinates (2 per point: x and y) directly
+        // Read all SerializedGroup (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
-        self.fill_next_units(Label::Coordinates, &mut coords)?;
+        self.fill_next_units(Label::SerializedGroup, &mut coords)?;
 
         // Convert coordinate pairs to points using Short Weierstrass constructor
         for (i, o) in output.iter_mut().enumerate() {
@@ -143,9 +143,9 @@ where
         &mut self,
         output: &mut [ark_ec::twisted_edwards::Projective<P>],
     ) -> ProofResult<&mut Self> {
-        // Read all coordinates (2 per point: x and y) directly
+        // Read all SerializedGroup (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
-        self.fill_next_units(Label::Coordinates, &mut coords)?;
+        self.fill_next_units(Label::SerializedGroup, &mut coords)?;
 
         // Convert coordinate pairs to points using Twisted Edwards constructor
         for (i, o) in output.iter_mut().enumerate() {

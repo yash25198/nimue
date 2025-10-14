@@ -68,7 +68,7 @@ where
 
         self.pattern
             .begin_challenge::<F>(label.clone(), Length::Fixed(output.len()))?;
-        self.fill_challenge_bytes(Label::BaseFieldCoefficientsLittleEndian, &mut buf)?;
+        self.fill_challenge_bytes(Label::BaseFieldCoefficients, &mut buf)?;
         self.pattern
             .end_challenge::<F>(label, Length::Fixed(output.len()))?;
         // Convert bytes to field elements by chunking the buffer

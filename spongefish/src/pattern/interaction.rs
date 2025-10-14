@@ -26,9 +26,7 @@ pub struct Interaction {
 pub enum Label {
     Bytes,
     Units,
-    Coordinates,
     BaseFieldCoefficients,
-    BaseFieldCoefficientsLittleEndian,
     SerializedGroup,
     Public,
     Ratchet,
@@ -49,9 +47,7 @@ impl Label {
         match self {
             Self::Bytes => "bytes",
             Self::Units => "units",
-            Self::Coordinates => "coordinates",
             Self::BaseFieldCoefficients => "base-field-coefficients",
-            Self::BaseFieldCoefficientsLittleEndian => "base-field-coefficients-little-endian",
             Self::SerializedGroup => "serialized-group",
             Self::Public => "public",
             Self::Ratchet => "ratchet",
