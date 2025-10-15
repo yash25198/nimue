@@ -33,12 +33,12 @@ pub trait BytesToUnitDeserialize {
         &mut self,
         label: Label,
         input: &mut [u8],
-    ) -> Result<&mut Self, PatternError>;
+    ) -> &mut Self;
 
-    fn next_bytes<const N: usize>(&mut self, label: Label) -> Result<[u8; N], PatternError> {
+    fn next_bytes<const N: usize>(&mut self, label: Label) -> [u8; N] {
         let mut input = [0u8; N];
-        self.fill_next_bytes(label, &mut input)?;
-        Ok(input)
+        self.fill_next_bytes(label, &mut input);
+        input
     }
 }
 

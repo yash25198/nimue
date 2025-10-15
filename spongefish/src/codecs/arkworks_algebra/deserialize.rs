@@ -7,8 +7,8 @@ use ark_ff::{Field, Fp, FpConfig, PrimeField};
 
 use super::{FieldToUnitDeserialize, GroupToUnitDeserialize};
 use crate::{
-    codecs::bytes_modp, pattern::Label, traits::BytesToUnitDeserialize, DuplexSpongeInterface,
-    ProofResult, VerifierState,
+    codecs::bytes_modp, pattern::{Label, PatternError}, traits::BytesToUnitDeserialize, DuplexSpongeInterface,
+    ProofError, ProofResult, VerifierState,
 };
 
 // ============================================================================
@@ -27,7 +27,11 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         // Read all bytes at once - this matches the pattern's single message_bytes call
-        self.fill_next_bytes(Label::BaseFieldCoefficients, &mut buf)?;
+        self.fill_next_bytes(Label::BaseFieldCoefficients, &mut buf);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
+        }
 
         // Deserialize each scalar from its chunk
         for (i, o) in output.iter_mut().enumerate() {
@@ -52,7 +56,11 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         // Read all bytes at once - this matches the pattern's single message_bytes call
-        self.fill_next_bytes(Label::SerializedGroup, &mut buf)?;
+        self.fill_next_bytes(Label::SerializedGroup, &mut buf);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
+        }
 
         // Deserialize each point from its chunk
         for (i, o) in output.iter_mut().enumerate() {
@@ -81,7 +89,11 @@ where
         let mut flattened = vec![Fp::<C, N>::default(); output.len() * extension_degree];
 
         // Read base field coefficients directly - matches pattern's inner message_units call
-        self.fill_next_units(Label::BaseFieldCoefficients, &mut flattened)?;
+        self.fill_next_units(Label::BaseFieldCoefficients, &mut flattened);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
+        }
 
         // Convert base field elements back to extension field
         for (i, o) in output.iter_mut().enumerate() {
@@ -112,7 +124,11 @@ where
     ) -> ProofResult<&mut Self> {
         // Read all SerializedGroup (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
-        self.fill_next_units(Label::SerializedGroup, &mut coords)?;
+        self.fill_next_units(Label::SerializedGroup, &mut coords);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
+        }
 
         // Convert coordinate pairs to points using Short Weierstrass constructor
         for (i, o) in output.iter_mut().enumerate() {
@@ -145,7 +161,11 @@ where
     ) -> ProofResult<&mut Self> {
         // Read all SerializedGroup (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
-        self.fill_next_units(Label::SerializedGroup, &mut coords)?;
+        self.fill_next_units(Label::SerializedGroup, &mut coords);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
+        }
 
         // Convert coordinate pairs to points using Twisted Edwards constructor
         for (i, o) in output.iter_mut().enumerate() {

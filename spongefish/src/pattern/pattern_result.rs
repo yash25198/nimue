@@ -27,8 +27,8 @@ use super::PatternError;
 /// ```
 #[derive(Debug)]
 pub struct PatternResult<T> {
-    inner: Option<T>,
-    error: Option<PatternError>,
+    pub(crate) inner: Option<T>,
+    pub(crate) error: Option<PatternError>,
 }
 
 impl<T> PatternResult<T> {

@@ -7,7 +7,7 @@ use crate::{
         PatternPlayer, PatternResult,
     },
     traits::BytesToUnitDeserialize,
-    CommonUnitToBytes, DefaultHash, ProofResult, UnitToBytes, UnitTranscript,
+    CommonUnitToBytes, DefaultHash, UnitToBytes, UnitTranscript,
 };
 
 /// Inner state for the verifier.
@@ -113,22 +113,20 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierStateInner<'a, H, U> {
     }
 
     /// Read a hint from the proof.
-    pub fn hint_bytes(&mut self, label: Label) -> Result<&'a [u8], std::io::Error> {
+    pub fn hint_bytes(&mut self, label: Label, output: &mut Vec<u8>) -> Result<(), PatternError> {
         self.pattern
             .inner_mut()
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Already finalized"))?
+            .ok_or(PatternError::AlreadyFinalized)?
             .interact(Interaction::new::<u8>(
                 Hierarchy::Atomic,
                 Kind::Hint,
                 label,
                 Length::Dynamic,
-            ))
-            .map_err(|_| std::io::Error::new(std::io::ErrorKind::Other, "Pattern error"))?;
+            ))?;
 
         if self.narg_string[self.cursor..].len() < 4 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "Insufficient transcript remaining for hint",
+            return Err(PatternError::SizeError(
+                "Insufficient transcript remaining for hint".to_string(),
             ));
         }
 
@@ -142,18 +140,16 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierStateInner<'a, H, U> {
         let rest = &self.narg_string[self.cursor..];
 
         if rest.len() < len {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                format!(
-                    "Insufficient transcript remaining, got {}, need {len}",
-                    rest.len()
-                ),
-            ));
+            return Err(PatternError::SizeError(format!(
+                "Insufficient transcript remaining, got {}, need {len}",
+                rest.len()
+            )));
         }
 
-        let hint = &rest[..len];
+        output.clear();
+        output.extend_from_slice(&rest[..len]);
         self.cursor += len;
-        Ok(hint)
+        Ok(())
     }
 
     /// Add public units to the transcript.
@@ -249,10 +245,13 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         &mut self,
         label: Label,
         output: &mut [U],
-    ) -> Result<&mut Self, PatternError> {
-        let inner = self.inner_mut_or_err()?;
-        inner.fill_next_units(label, output)?;
-        Ok(self)
+    ) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            if let Err(e) = inner.fill_next_units(label, output) {
+                self.set_error(e.into());
+            }
+        }
+        self
     }
 
     /// Begin a message interaction.
@@ -327,25 +326,31 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
 
     /// Ratchet the sponge state.
     #[inline]
-    pub fn ratchet(&mut self) -> ProofResult<&mut Self> {
-        let inner = self.inner_mut_or_err()?;
-        inner.ratchet()?;
-        Ok(self)
+    pub fn ratchet(&mut self) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            if let Err(e) = inner.ratchet() {
+                self.set_error(e.into());
+            }
+        }
+        self
     }
 
     /// Read a hint from the proof.
-    pub fn hint_bytes(&mut self, label: Label) -> Result<&'a [u8], std::io::Error> {
-        let inner = self.inner_mut_or_err().map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Pattern error: {}", e))
-        })?;
-        inner.hint_bytes(label)
+    pub fn hint_bytes(&mut self, label: Label, output: &mut Vec<u8>) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            if let Err(e) = inner.hint_bytes(label, output) {
+                self.set_error(e.into());
+            }
+        }
+        self
     }
 
     /// Abort the verifier.
     pub fn abort(mut self) -> Result<(), PatternError> {
         if self.has_error() {
             // Already has an error, just mark as finalized to prevent drop panic
-            if let Some(inner) = self.inner_mut() {
+            // Access inner directly since inner_mut() returns None when there's an error
+            if let Some(inner) = self.inner.as_mut() {
                 inner.pattern.abort();
             }
             return Ok(());
@@ -434,16 +439,24 @@ impl<H: DuplexSpongeInterface<u8>> BytesToUnitDeserialize for VerifierState<'_, 
         &mut self,
         label: Label,
         output: &mut [u8],
-    ) -> Result<&mut Self, PatternError> {
-        let inner = self.inner_mut_or_err()?;
-        inner
-            .pattern
-            .begin_message::<u8>(label.clone(), Length::Fixed(output.len()));
-        inner.fill_next_units(Label::Units, output)?;
-        inner
-            .pattern
-            .end_message::<u8>(label, Length::Fixed(output.len()));
-        Ok(self)
+    ) -> &mut Self {
+        let error = if let Some(inner) = self.inner_mut() {
+            inner
+                .pattern
+                .begin_message::<u8>(label.clone(), Length::Fixed(output.len()));
+            let result = inner.fill_next_units(Label::Units, output);
+            inner
+                .pattern
+                .end_message::<u8>(label, Length::Fixed(output.len()));
+            result.err()
+        } else {
+            None
+        };
+        
+        if let Some(e) = error {
+            self.set_error(e.into());
+        }
+        self
     }
 }
 
@@ -630,7 +643,8 @@ mod tests {
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"abc");
         let mut buf = [0u8; 3];
 
-        assert!(vs.fill_next_units(Label::Units, &mut buf).is_ok());
+        vs.fill_next_units(Label::Units, &mut buf);
+        assert!(!vs.has_error());
         assert_eq!(buf, *b"abc");
         assert_eq!(*vs.inner().unwrap().duplex_sponge.absorbed.borrow(), b"abc");
         vs.finalize().expect("Failed to finalize");
@@ -657,7 +671,8 @@ mod tests {
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"xy");
         let mut buf = [0u8; 4];
 
-        assert!(vs.fill_next_units(Label::Units, &mut buf).is_err());
+        vs.fill_next_units(Label::Units, &mut buf);
+        assert!(vs.has_error());
         vs.abort().expect("Failed to abort");
     }
 
@@ -668,7 +683,8 @@ mod tests {
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), &[]);
-        vs.ratchet().expect("Failed to ratchet");
+        vs.ratchet();
+        assert!(!vs.has_error());
         assert!(*vs.inner().unwrap().duplex_sponge.ratcheted.borrow());
         vs.finalize().expect("Failed to finalize");
     }
@@ -712,7 +728,8 @@ mod tests {
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"xyz");
         let mut out = [0u8; 3];
 
-        assert!(vs.fill_next_bytes(Label::from("bytes"), &mut out).is_ok());
+        vs.fill_next_bytes(Label::from("bytes"), &mut out);
+        assert!(!vs.has_error());
         assert_eq!(out, *b"xyz");
         vs.finalize().expect("Failed to finalize");
     }
@@ -731,7 +748,8 @@ mod tests {
         let narg = prover.finalize().expect("Failed to finalize prover");
 
         let mut vs: VerifierState = VerifierState::new(pattern, &narg);
-        let result = vs.hint_bytes(Label::from("hint_bytes")).unwrap();
+        let mut result = Vec::new();
+        vs.hint_bytes(Label::from("hint_bytes"), &mut result);
 
         assert_eq!(result, hint);
         vs.finalize().expect("Failed to finalize verifier");
@@ -750,9 +768,10 @@ mod tests {
         let narg = prover.finalize().expect("Failed to finalize");
 
         let mut vs: VerifierState = VerifierState::new(pattern, &narg);
-        let result = vs.hint_bytes(Label::from("hint_bytes")).unwrap();
+        let mut result = Vec::new();
+        vs.hint_bytes(Label::from("hint_bytes"), &mut result);
 
-        assert_eq!(result, b"");
+        assert_eq!(result.as_slice(), b"");
         vs.finalize().expect("Failed to finalize");
     }
 
@@ -763,8 +782,9 @@ mod tests {
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
         let narg = hex::decode("06000000616263313233").unwrap();
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), &narg);
-        let err = vs.hint_bytes(Label::custom("hint_bytes"));
-        assert!(err.is_err());
+        let mut result = Vec::new();
+        vs.hint_bytes(Label::custom("hint_bytes"), &mut result);
+        assert!(vs.has_error());
     }
 
     #[test]
@@ -775,8 +795,11 @@ mod tests {
 
         let narg = &[1, 2, 3];
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), narg);
-        let err = vs.hint_bytes(Label::custom("hint_bytes")).unwrap_err();
+        let mut result = Vec::new();
+        vs.hint_bytes(Label::custom("hint_bytes"), &mut result);
 
+        assert!(vs.has_error());
+        let err = vs.get_error().unwrap();
         assert!(format!("{err}").contains("Insufficient transcript remaining for hint"));
         vs.abort().expect("Failed to abort");
     }
@@ -789,8 +812,11 @@ mod tests {
 
         let narg = [5u8, 0, 0, 0, b'a', b'b'];
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), &narg);
-        let err = vs.hint_bytes(Label::custom("hint_bytes")).unwrap_err();
+        let mut result = Vec::new();
+        vs.hint_bytes(Label::custom("hint_bytes"), &mut result);
 
+        assert!(vs.has_error());
+        let err = vs.get_error().unwrap();
         assert!(format!("{err}").contains("Insufficient transcript remaining"));
         vs.abort().expect("Failed to abort");
     }

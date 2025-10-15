@@ -422,6 +422,15 @@ where
 
     /// Abort the prover.
     pub fn abort(mut self) -> Result<(), PatternError> {
+        if self.has_error() {
+            // Already has an error, just mark as finalized to prevent drop panic
+            // Access inner directly since inner_mut() returns None when there's an error
+            if let Some(inner) = self.inner.as_mut() {
+                inner.pattern.abort();
+            }
+            return Ok(());
+        }
+        
         let inner = self.inner_mut_or_err()?;
         inner.abort_inner()
     }

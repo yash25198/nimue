@@ -96,12 +96,8 @@ fn test_deterministic() {
     let mut first = [0u8; 3];
     let mut second = [0u8; 3];
 
-    first_verifier
-        .fill_next_bytes(Label::Bytes, &mut first)
-        .unwrap();
-    second_verifier
-        .fill_next_bytes(Label::Bytes, &mut second)
-        .unwrap();
+    first_verifier.fill_next_bytes(Label::Bytes, &mut first);
+    second_verifier.fill_next_bytes(Label::Bytes, &mut second);
 
     let mut first_chal = [0u8; 16];
     let mut second_chal = [0u8; 16];
@@ -126,8 +122,7 @@ fn test_statistics() {
     let mut verifier_state = VerifierState::<Keccak>::new(pattern, b"seed");
     verifier_state
         .fill_next_bytes(Label::Bytes, &mut [0u8; 4])
-        .unwrap();
-    verifier_state.ratchet().unwrap();
+        .ratchet();
 
     let mut output = [0u8; 2048];
     verifier_state.fill_challenge_bytes(Label::custom("output"), &mut output);
@@ -198,7 +193,8 @@ fn test_prover_empty_absorb() {
 
     let mut verifier = VerifierState::<Keccak>::new(pattern, b"");
     // Empty transcript - should fail
-    assert!(verifier.next_bytes::<1>(Label::Bytes).is_err());
+    let _ = verifier.next_bytes::<1>(Label::Bytes);
+    assert!(verifier.has_error());
     verifier.abort().unwrap();
 }
 

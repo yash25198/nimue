@@ -166,21 +166,15 @@ fn test_transcript_readwrite() {
 
     let mut verifier_state: VerifierState = VerifierState::new(Arc::new(pattern), &proof);
     let mut input = [0u8; 10];
-    verifier_state
-        .fill_next_units(Label::Units, &mut input)
-        .unwrap();
+    verifier_state.fill_next_units(Label::Units, &mut input);
     assert_eq!(input, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     let mut data = [0u8; 10];
     verifier_state.fill_challenge_units(Label::custom("fill_challenge_units"), &mut data);
     assert_eq!(hex::encode(data), "33ea75e06b208b3534e2");
     let mut input = [0u8; 5];
-    verifier_state
-        .fill_next_units(Label::Units, &mut input)
-        .unwrap();
+    verifier_state.fill_next_units(Label::Units, &mut input);
     assert_eq!(input, [0, 1, 2, 3, 4]);
-    verifier_state
-        .fill_next_units(Label::Units, &mut input)
-        .unwrap();
+    verifier_state.fill_next_units(Label::Units, &mut input);
     assert_eq!(input, [5, 6, 7, 8, 9]);
     let mut data = [0u8; 10];
     verifier_state.fill_challenge_units(Label::custom("fill_challenge_units"), &mut data);
@@ -228,7 +222,7 @@ fn test_prover_empty_absorb() {
     // For 0-length units, we don't read from the proof, but we still need to consume the interaction
     // The verifier state constructor handles this automatically based on the pattern
     let mut vchallenge = [0u8; 0];
-    vstate.fill_next_units(Label::Units, &mut vchallenge).unwrap();
+    vstate.fill_next_units(Label::Units, &mut vchallenge);
     vstate.fill_challenge_units(Label::custom("fill_challenge_units"), &mut vchallenge);
     vstate.finalize().unwrap();
 }
