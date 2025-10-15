@@ -147,39 +147,22 @@ where
 {
     let mut pattern = PatternState::new();
 
-    pattern.begin_protocol(Label::from("whir")).unwrap();
-
-    // Commitment phase
     pattern
+        .begin_protocol(Label::from("whir"))
         .message_scalars::<Fr>(Label::from("commitment"), 1)
-        .unwrap();
-
-    // Challenge: evaluation point
-    pattern
         .challenge_scalars::<Fr>(Label::from("eval_point"), num_vars)
-        .unwrap();
-
-    // Query phase: claimed evaluation
-    pattern
         .message_scalars::<Fr>(Label::from("claimed_eval"), 1)
-        .unwrap();
-
-    pattern.ratchet().unwrap();
+        .ratchet();
 
     // Challenge phase (multiple rounds for folding)
     for round in 0..num_vars {
         pattern
             .message_scalars::<Fr>(Label::from(format!("round_{}_value", round)), 1)
-            .unwrap();
-        pattern
             .challenge_scalars::<Fr>(Label::from(format!("round_{}_challenge", round)), 1)
-            .unwrap();
-        pattern
-            .message_scalars::<Fr>(Label::from(format!("round_{}_auth", round)), 1)
-            .unwrap();
+            .message_scalars::<Fr>(Label::from(format!("round_{}_auth", round)), 1);
     }
 
-    pattern.end_protocol(Label::from("whir")).unwrap();
+    pattern.end_protocol(Label::from("whir"));
     pattern
 }
 
@@ -207,19 +190,19 @@ where
     ProverState<DefaultHash, u8, R>: ProverFieldMessageExt<Fr> + UnitToField<Fr>,
 {
     // Send commitment
-    prover.message_scalars(Label::from("commitment"), &[commitment])?;
+    prover.message_scalars(Label::from("commitment"), &[commitment]);
 
     // Get evaluation point as Fiat-Shamir challenge (after commitment!)
     let mut eval_point = vec![Fr::default(); poly.num_vars];
-    prover.fill_challenge_scalars(Label::from("eval_point"), &mut eval_point)?;
+    prover.fill_challenge_scalars(Label::from("eval_point"), &mut eval_point);
 
     println!("  Prover received challenge point from transcript");
 
     // Compute and send claimed evaluation
     let claimed_eval = poly.evaluate_at(&eval_point);
-    prover.message_scalars(Label::from("claimed_eval"), &[claimed_eval])?;
-
-    prover.ratchet()?;
+    prover
+        .message_scalars(Label::from("claimed_eval"), &[claimed_eval])
+        .ratchet();
 
     // Folding protocol (simplified)
     let mut current_poly = poly.clone();
@@ -230,14 +213,14 @@ where
         prover.message_scalars(
             Label::from(format!("round_{}_value", round)),
             &[round_value],
-        )?;
+        );
 
         // Get folding challenge
         let mut challenge_buf = [Fr::default(); 1];
         prover.fill_challenge_scalars(
             Label::from(format!("round_{}_challenge", round)),
             &mut challenge_buf,
-        )?;
+        );
         let challenge = challenge_buf[0];
 
         // Fold polynomial (simplified - in reality this involves careful folding)
@@ -252,7 +235,7 @@ where
 
         // Send authentication value (simplified)
         let auth_value = round_value * challenge; // Mock auth path
-        prover.message_scalars(Label::from(format!("round_{}_auth", round)), &[auth_value])?;
+        prover.message_scalars(Label::from(format!("round_{}_auth", round)), &[auth_value]);
     }
 
     Ok(())
@@ -268,21 +251,20 @@ where
 {
     // Read commitment
     let mut commitment_buf = [Fr::default(); 1];
-    verifier.fill_message_scalars(Label::from("commitment"), &mut commitment_buf)?;
+    verifier.fill_message_scalars(Label::from("commitment"), &mut commitment_buf);
     let _commitment = commitment_buf[0];
 
     // Generate evaluation point as challenge (after seeing commitment!)
     let mut eval_point = vec![Fr::default(); num_vars];
-    verifier.fill_challenge_scalars(Label::from("eval_point"), &mut eval_point)?;
+    verifier.fill_challenge_scalars(Label::from("eval_point"), &mut eval_point);
 
     println!("  Verifier generated challenge point from transcript");
 
-    // Read claimed evaluation
+    // Read claimed evaluation and ratchet
     let mut claimed_eval_buf = [Fr::default(); 1];
     verifier.fill_message_scalars(Label::from("claimed_eval"), &mut claimed_eval_buf)?;
+    verifier.ratchet();
     let mut expected_eval = claimed_eval_buf[0];
-
-    verifier.ratchet()?;
 
     // Verify folding rounds
     for round in 0..num_vars {
@@ -299,7 +281,7 @@ where
         verifier.fill_challenge_scalars(
             Label::from(format!("round_{}_challenge", round)),
             &mut challenge_buf,
-        )?;
+        );
         let challenge = challenge_buf[0];
 
         // Read authentication
@@ -357,15 +339,11 @@ fn main() {
     let proof = {
         let mut prover = ProverState::new(pattern.clone(), rng);
 
-        prover
-            .begin_protocol(Label::from("whir"))
-            .expect("Failed to begin protocol");
+        prover.begin_protocol(Label::from("whir"));
 
         prove_opening(&mut prover, &poly, commitment).expect("Proving failed");
 
-        prover
-            .end_protocol(Label::from("whir"))
-            .expect("Failed to end protocol");
+        prover.end_protocol(Label::from("whir"));
 
         prover.finalize().expect("Prover finalize failed")
     };
@@ -376,15 +354,11 @@ fn main() {
     let result = {
         let mut verifier = VerifierState::new(pattern.clone(), &proof);
 
-        verifier
-            .begin_protocol(Label::from("whir"))
-            .expect("Failed to begin protocol");
+        verifier.begin_protocol(Label::from("whir"));
 
         verify_opening(&mut verifier, num_vars).expect("Verification failed");
 
-        verifier
-            .end_protocol(Label::from("whir"))
-            .expect("Failed to end protocol");
+        verifier.end_protocol(Label::from("whir"));
 
         verifier.finalize()
     };
