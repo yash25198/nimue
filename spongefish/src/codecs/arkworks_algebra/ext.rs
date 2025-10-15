@@ -83,9 +83,9 @@ where
     fn message_scalars(&mut self, label: Label, input: &[F]) -> &mut Self {
         // Call Pattern trait methods with correct type parameters
         use crate::pattern::{Length, Pattern};
-        Pattern::begin_message::<F>(self, label.clone(), Length::Fixed(input.len()));
+        self.begin_message::<F>( label.clone(), input.len());
         self.add_scalars(input);
-        Pattern::end_message::<F>(self, label, Length::Fixed(input.len()));
+        self.end_message::<F>(label, input.len());
         self
     }
 }
@@ -101,9 +101,9 @@ where
     fn message_points(&mut self, label: Label, input: &[G]) -> &mut Self {
         // Call Pattern trait methods with correct type parameters
         use crate::pattern::{Length, Pattern};
-        Pattern::begin_message::<G>(self, label.clone(), Length::Fixed(input.len()));
+        self.begin_message::<G>(label.clone(), input.len());
         self.add_points(input);
-        Pattern::end_message::<G>(self, label, Length::Fixed(input.len()));
+        self.end_message::<G>(label, input.len());
         self
     }
 }
@@ -170,10 +170,10 @@ where
     fn fill_message_scalars(&mut self, label: Label, output: &mut [F]) -> ProofResult<&mut Self> {
         // Use Pattern trait methods with correct type parameters (infallible)
         use crate::pattern::{Length, Pattern};
-        Pattern::begin_message::<F>(self, label.clone(), Length::Fixed(output.len()));
+        self.begin_message::<F>(label.clone(), output.len());
         // This can fail with I/O errors
         self.fill_next_scalars(output)?;
-        Pattern::end_message::<F>(self, label, Length::Fixed(output.len()));
+        self.end_message::<F>(label, output.len());
         Ok(self)
     }
 }
@@ -187,9 +187,9 @@ where
 {
     fn fill_message_points(&mut self, label: Label, output: &mut [G]) -> ProofResult<&mut Self> {
         use crate::pattern::{Length, Pattern};
-        Pattern::begin_message::<G>(self, label.clone(), Length::Fixed(output.len()));
+            self.begin_message::<G>(label.clone(), output.len());
         self.fill_next_points(output)?;
-        Pattern::end_message::<G>(self, label, Length::Fixed(output.len()));
+        self.end_message::<G>(label, output.len());
         Ok(self)
     }
 }

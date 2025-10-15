@@ -269,9 +269,9 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     }
 
     /// End a message interaction.
-    pub fn end_message(&mut self, label: Label, count: usize) -> &mut Self {
+    pub fn end_message<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
         if let Some(inner) = self.inner_mut() {
-            inner.pattern.end_message::<U>(label, Length::Fixed(count));
+            inner.pattern.end_message::<T>(label, Length::Fixed(count));
         }
         self
     }
