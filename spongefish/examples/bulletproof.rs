@@ -244,7 +244,7 @@ fn main() {
     let mut commitment = [G::default(); 1];
     let mut verifier = VerifierState::new(pattern.clone(), &proof);
     verifier.begin_protocol(Label::custom("bulletproof"));
-    verifier.fill_message_points(Label::custom("commitment"), &mut commitment).expect("Failed to read commitment");
+    verifier.fill_message_points(Label::custom("commitment"), &mut commitment);
     verifier.ratchet();
 
     // Verify proof

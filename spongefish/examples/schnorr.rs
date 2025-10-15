@@ -98,7 +98,7 @@ where
 {
     // Read commitment
     let mut K_buf = [G::default(); 1];
-    verifier.fill_message_points(Label::from("commitment"), &mut K_buf)?;
+    verifier.fill_message_points(Label::from("commitment"), &mut K_buf);
     let K = K_buf[0];
 
     // Generate challenge from transcript (same as prover via Fiat-Shamir)
@@ -108,7 +108,7 @@ where
 
     // Read response
     let mut r_buf = [G::ScalarField::default(); 1];
-    verifier.fill_message_scalars(Label::from("response"), &mut r_buf)?;
+    verifier.fill_message_scalars(Label::from("response"), &mut r_buf);
     let r = r_buf[0];
 
     // Verify: P * r == K + X * c
@@ -169,16 +169,11 @@ fn main() {
 
         // Read statement
         let mut generator = [G::default(); 1];
-        verifier
-            .fill_message_points(Label::from("generator"), &mut generator)
-            .expect("Failed to read generator");
-
         let mut public_key = [G::default(); 1];
         verifier
+            .fill_message_points(Label::from("generator"), &mut generator)
             .fill_message_points(Label::from("public_key"), &mut public_key)
-            .expect("Failed to read public key");
-
-        verifier.ratchet().expect("Failed to ratchet");
+            .ratchet();
 
         println!("✓ Statement read by verifier");
 

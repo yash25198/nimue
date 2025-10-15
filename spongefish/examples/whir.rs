@@ -262,7 +262,7 @@ where
 
     // Read claimed evaluation and ratchet
     let mut claimed_eval_buf = [Fr::default(); 1];
-    verifier.fill_message_scalars(Label::from("claimed_eval"), &mut claimed_eval_buf)?;
+    verifier.fill_message_scalars(Label::from("claimed_eval"), &mut claimed_eval_buf);
     verifier.ratchet();
     let mut expected_eval = claimed_eval_buf[0];
 
@@ -273,7 +273,7 @@ where
         verifier.fill_message_scalars(
             Label::from(format!("round_{}_value", round)),
             &mut round_value_buf,
-        )?;
+        );
         let round_value = round_value_buf[0];
 
         // Generate challenge
@@ -287,7 +287,7 @@ where
         // Read authentication
         let mut auth_buf = [Fr::default(); 1];
         verifier
-            .fill_message_scalars(Label::from(format!("round_{}_auth", round)), &mut auth_buf)?;
+            .fill_message_scalars(Label::from(format!("round_{}_auth", round)), &mut auth_buf);
         let auth_value = auth_buf[0];
 
         // Verify consistency (simplified check)
