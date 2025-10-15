@@ -270,8 +270,7 @@ mod tests {
         let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
 
         let _ = verifier
-            .fill_message_scalars(Label::from("tag"), &mut values2)
-            .unwrap();
+            .fill_message_scalars(Label::from("tag"), &mut values2);
         verifier.finalize().unwrap();
         assert_eq!(
             values2, values,
@@ -305,8 +304,7 @@ mod tests {
 
         let mut out = [Curve::ZERO];
         let _ = verifier
-            .fill_message_points(Label::custom("generator"), &mut out)
-            .unwrap();
+            .fill_message_points(Label::custom("generator"), &mut out);
 
         // Finalize the verifier to avoid panic on drop
         let _ = verifier.finalize();
@@ -351,8 +349,7 @@ mod tests {
 
         let mut out = [BabyBear::ZERO; 1];
         let _ = verifier
-            .fill_message_scalars(Label::from("tag"), &mut out)
-            .unwrap();
+            .fill_message_scalars(Label::from("tag"), &mut out);
         verifier.finalize().unwrap();
 
         assert_eq!(out[0], BabyBear::ONE, "Scalar should be ONE");

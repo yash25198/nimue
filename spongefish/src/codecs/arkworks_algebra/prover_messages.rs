@@ -512,8 +512,7 @@ mod tests {
         let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
         let mut received = [BabyBear::from(0u64); 2];
         verifier
-            .fill_message_scalars(Label::custom("data"), &mut received)
-            .unwrap();
+            .fill_message_scalars(Label::custom("data"), &mut received);
 
         assert_eq!(scalars, received);
         verifier.finalize().unwrap();
