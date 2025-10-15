@@ -85,6 +85,38 @@ impl<T> PatternResult<T> {
         self.error.as_ref()
     }
 
+    /// Get mutable reference to the inner value, or return the current error.
+    ///
+    /// This is useful for methods that need to propagate the actual error instead of
+    /// masking it with `AlreadyFinalized`.
+    ///
+    /// Returns:
+    /// - `Ok(&mut T)` if no error and inner value exists
+    /// - `Err(error)` if an error was previously set
+    /// - `Err(AlreadyFinalized)` if no error but inner value was consumed
+    pub fn inner_mut_or_err(&mut self) -> Result<&mut T, PatternError> {
+        if let Some(error) = &self.error {
+            return Err(error.clone());
+        }
+        self.inner.as_mut().ok_or(PatternError::AlreadyFinalized)
+    }
+
+    /// Get reference to the inner value, or return the current error.
+    ///
+    /// This is useful for read-only methods that need to propagate the actual error
+    /// instead of masking it with `AlreadyFinalized`.
+    ///
+    /// Returns:
+    /// - `Ok(&T)` if no error and inner value exists
+    /// - `Err(error)` if an error was previously set
+    /// - `Err(AlreadyFinalized)` if no error but inner value was consumed
+    pub fn inner_or_err(&self) -> Result<&T, PatternError> {
+        if let Some(error) = &self.error {
+            return Err(error.clone());
+        }
+        self.inner.as_ref().ok_or(PatternError::AlreadyFinalized)
+    }
+
     /// Finalize and return the inner value or the accumulated error.
     ///
     /// Consumes the `PatternResult` and either:
@@ -157,5 +189,62 @@ mod tests {
         assert_eq!(result.inner(), None);
         assert!(result.has_error());
         assert!(result.into_result().is_err());
+    }
+
+    #[test]
+    fn test_inner_mut_or_err_returns_actual_error() {
+        // Test that inner_mut_or_err returns the actual error, not AlreadyFinalized
+        let mut result = PatternResult::from_value(42);
+        
+        // Set a specific error (not AlreadyFinalized)
+        result.set_error(PatternError::SizeError("specific error".to_string()));
+        
+        // inner_mut_or_err should return the actual error, not AlreadyFinalized
+        let err = result.inner_mut_or_err().unwrap_err();
+        match err {
+            PatternError::SizeError(msg) => {
+                assert_eq!(msg, "specific error");
+            }
+            PatternError::AlreadyFinalized => {
+                panic!("Bug: Got AlreadyFinalized instead of the actual error!");
+            }
+            _ => panic!("Expected SizeError, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_inner_or_err_returns_actual_error() {
+        // Test that inner_or_err returns the actual error, not AlreadyFinalized
+        let mut result = PatternResult::from_value(42);
+        
+        // Set a specific error
+        result.set_error(PatternError::SizeError("test size error".to_string()));
+        
+        // inner_or_err should return the actual error
+        let err = result.inner_or_err().unwrap_err();
+        match err {
+            PatternError::SizeError(msg) => {
+                assert_eq!(msg, "test size error");
+            }
+            _ => panic!("Expected SizeError, got {:?}", err),
+        }
+    }
+
+    #[test]
+    fn test_inner_mut_or_err_returns_already_finalized_when_no_error() {
+        // Test that inner_mut_or_err returns AlreadyFinalized only when there's no error
+        let result = PatternResult::<i32> {
+            inner: None,
+            error: None,
+        };
+        
+        let mut result = result;
+        let err = result.inner_mut_or_err().unwrap_err();
+        match err {
+            PatternError::AlreadyFinalized => {
+                // Expected
+            }
+            _ => panic!("Expected AlreadyFinalized, got {:?}", err),
+        }
     }
 }

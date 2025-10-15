@@ -422,11 +422,8 @@ where
 
     /// Abort the prover.
     pub fn abort(mut self) -> Result<(), PatternError> {
-        if let Some(inner) = self.inner_mut() {
-            inner.abort_inner()
-        } else {
-            Err(PatternError::AlreadyFinalized)
-        }
+        let inner = self.inner_mut_or_err()?;
+        inner.abort_inner()
     }
 
     /// Finalize the prover and return the proof.
@@ -441,13 +438,13 @@ where
     }
 
     /// Get mutable reference to the RNG.
-    pub fn rng(&mut self) -> Option<&mut (impl CryptoRng + RngCore)> {
-        self.inner_mut().map(|inner| inner.rng())
+    pub fn rng(&mut self) -> Result<&mut (impl CryptoRng + RngCore), PatternError> {
+        Ok(self.inner_mut_or_err()?.rng())
     }
 
     /// Get the proof string (NARG string).
-    pub fn narg_string(&self) -> Option<&[u8]> {
-        self.inner().map(|inner| inner.narg_string())
+    pub fn narg_string(&self) -> Result<&[u8], PatternError> {
+        Ok(self.inner_or_err()?.narg_string())
     }
 }
 

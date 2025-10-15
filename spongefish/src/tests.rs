@@ -228,7 +228,7 @@ fn test_prover_empty_absorb() {
     // For 0-length units, we don't read from the proof, but we still need to consume the interaction
     // The verifier state constructor handles this automatically based on the pattern
     let mut vchallenge = [0u8; 0];
-    vstate.fill_next_units(Label::Units, &mut vchallenge);
+    vstate.fill_next_units(Label::Units, &mut vchallenge).unwrap();
     vstate.fill_challenge_units(Label::custom("fill_challenge_units"), &mut vchallenge);
     vstate.finalize().unwrap();
 }

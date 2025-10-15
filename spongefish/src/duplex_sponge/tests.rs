@@ -65,7 +65,7 @@ fn test_prover_state_bytewriter() {
 
     let mut prover_state = ProverState::<Keccak>::new(pattern, rand::rngs::OsRng);
     assert!(!prover_state.public_bytes(Label::Public, &[0u8]).has_error());
-    assert_eq!(prover_state.narg_string(), Some(b"" as &[u8]));
+    assert_eq!(prover_state.narg_string(), Ok(b"" as &[u8]));
     prover_state.finalize().unwrap();
 }
 

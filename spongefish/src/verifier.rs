@@ -250,12 +250,9 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         label: Label,
         output: &mut [U],
     ) -> Result<&mut Self, PatternError> {
-        if let Some(inner) = self.inner_mut() {
-            inner.fill_next_units(label, output)?;
-            Ok(self)
-        } else {
-            Err(PatternError::AlreadyFinalized)
-        }
+        let inner = self.inner_mut_or_err()?;
+        inner.fill_next_units(label, output)?;
+        Ok(self)
     }
 
     /// Begin a message interaction.
@@ -331,24 +328,17 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     /// Ratchet the sponge state.
     #[inline]
     pub fn ratchet(&mut self) -> ProofResult<&mut Self> {
-        if let Some(inner) = self.inner_mut() {
-            inner.ratchet()?;
-            Ok(self)
-        } else {
-            Err(PatternError::AlreadyFinalized.into())
-        }
+        let inner = self.inner_mut_or_err()?;
+        inner.ratchet()?;
+        Ok(self)
     }
 
     /// Read a hint from the proof.
     pub fn hint_bytes(&mut self, label: Label) -> Result<&'a [u8], std::io::Error> {
-        if let Some(inner) = self.inner_mut() {
-            inner.hint_bytes(label)
-        } else {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "Already finalized",
-            ))
-        }
+        let inner = self.inner_mut_or_err().map_err(|e| {
+            std::io::Error::new(std::io::ErrorKind::Other, format!("Pattern error: {}", e))
+        })?;
+        inner.hint_bytes(label)
     }
 
     /// Abort the verifier.
@@ -361,11 +351,8 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             return Ok(());
         }
 
-        if let Some(inner) = self.inner_mut() {
-            inner.abort_inner()
-        } else {
-            Err(PatternError::AlreadyFinalized)
-        }
+        let inner = self.inner_mut_or_err()?;
+        inner.abort_inner()
     }
 
     /// Finalize the verifier.
@@ -448,18 +435,15 @@ impl<H: DuplexSpongeInterface<u8>> BytesToUnitDeserialize for VerifierState<'_, 
         label: Label,
         output: &mut [u8],
     ) -> Result<&mut Self, PatternError> {
-        if let Some(inner) = self.inner_mut() {
-            inner
-                .pattern
-                .begin_message::<u8>(label.clone(), Length::Fixed(output.len()));
-            inner.fill_next_units(Label::Units, output)?;
-            inner
-                .pattern
-                .end_message::<u8>(label, Length::Fixed(output.len()));
-            Ok(self)
-        } else {
-            Err(PatternError::AlreadyFinalized)
-        }
+        let inner = self.inner_mut_or_err()?;
+        inner
+            .pattern
+            .begin_message::<u8>(label.clone(), Length::Fixed(output.len()));
+        inner.fill_next_units(Label::Units, output)?;
+        inner
+            .pattern
+            .end_message::<u8>(label, Length::Fixed(output.len()));
+        Ok(self)
     }
 }
 
