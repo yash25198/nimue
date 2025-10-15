@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use super::Interaction;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone, PartialEq)]
 pub enum PatternError {
     #[error("Transcript is already finalized.")]
     AlreadyFinalized,
@@ -34,7 +34,7 @@ pub enum PatternError {
     #[error("Deserialization error: {0}")]
     DeserializationError(String),
     #[error("IO error: {0}")]
-    IoError(std::io::Error),
+    IoError(String),
     #[error("Size error: {0}")]
     SizeError(String),
     #[error("Transcript error: {0}")]

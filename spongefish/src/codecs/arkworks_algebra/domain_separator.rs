@@ -11,37 +11,38 @@ use crate::{
 };
 
 impl FieldPattern for PatternState {
-    fn message_scalars<F: Field>(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
-        self.begin_message::<F>(label.clone(), Length::Fixed(count))?;
+    fn message_scalars<F: Field>(&mut self, label: Label, count: usize) -> &mut Self {
+        self.begin_message::<F>(label.clone(), Length::Fixed(count));
         self.message_bytes(
             Label::BaseFieldCoefficients,
             count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
-        )?;
-        self.end_message::<F>(label, Length::Fixed(count))?;
-        Ok(self)
+        );
+        self.end_message::<F>(label, Length::Fixed(count));
+        self
     }
 
-    fn challenge_scalars<F: Field>(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
-        self.begin_challenge::<F>(label.clone(), Length::Fixed(count))?;
+    fn challenge_scalars<F: Field>(&mut self, label: Label, count: usize) -> &mut Self {
+        self.begin_challenge::<F>(label.clone(), Length::Fixed(count));
         self.challenge_bytes(
             Label::BaseFieldCoefficients,
             count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
-        )?;
-        self.end_challenge::<F>(label, Length::Fixed(count))?;
-        Ok(self)
+        );
+        self.end_challenge::<F>(label, Length::Fixed(count));
+        self
     }
 }
 
 impl GroupPattern for PatternState {
-    fn message_points<G: CurveGroup>(&mut self, label: Label, count: usize) -> Result<&mut Self, PatternError> {
+    fn message_points<G: CurveGroup>(&mut self, label: Label, count: usize) -> &mut Self {
+        use bytes::Pattern as BytesPattern;
+
         let compressed_size = G::default().compressed_size();
-        self.begin_message::<G>(label.clone(), Length::Fixed(count))?;
-        self.message_bytes(Label::SerializedGroup, count * compressed_size)?;
-        self.end_message::<G>(label, Length::Fixed(count))?;
-        Ok(self)
+        self.begin_message::<G>(label.clone(), Length::Fixed(count));
+        self.message_bytes(Label::SerializedGroup, count * compressed_size);
+        self.end_message::<G>(label, Length::Fixed(count));
+        self
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -97,10 +98,7 @@ mod tests {
         // Use the new Pattern API instead of DomainSeparator
         fn add_schnorr_domain_separator<P, G: ark_ec::CurveGroup>(pattern: &mut P)
         where
-            P: crate::pattern::Pattern
-                + crate::codecs::unit::Pattern
-                + FieldPattern
-                + GroupPattern,
+            P: crate::pattern::Pattern + crate::codecs::unit::Pattern + FieldPattern + GroupPattern,
         {
             let _ = pattern.begin_protocol(Label::custom("github.com/mmaker/spongefish"));
             let _ = pattern.message_points::<G>(Label::custom("g"), 1);
@@ -136,14 +134,14 @@ mod tests {
 15     End Message serialized-group Fixed(32) u8
 16   End Message com Fixed(1) ark_ec::models::twisted_edwards::group::Projective<ark_curve25519::curves::Curve25519Config>
 17   Begin Challenge chal Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
-18     Begin Challenge base-field-coefficients-little-endian Fixed(47) u8
+18     Begin Challenge base-field-coefficients Fixed(47) u8
 19       Atomic Challenge units Fixed(47) u8
-20     End Challenge base-field-coefficients-little-endian Fixed(47) u8
+20     End Challenge base-field-coefficients Fixed(47) u8
 21   End Challenge chal Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
 22   Begin Message resp Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
-23     Begin Message base-field-coefficients-little-endian Fixed(32) u8
+23     Begin Message base-field-coefficients Fixed(32) u8
 24       Atomic Message units Fixed(32) u8
-25     End Message base-field-coefficients-little-endian Fixed(32) u8
+25     End Message base-field-coefficients Fixed(32) u8
 26   End Message resp Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
 27 End Protocol github.com/mmaker/spongefish None ()
 "#

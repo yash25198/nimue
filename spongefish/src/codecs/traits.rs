@@ -6,12 +6,12 @@ macro_rules! field_traits {
                 &mut self,
                 label: $crate::pattern::Label,
                 count: usize,
-            ) -> Result<&mut Self, $crate::pattern::PatternError>;
+            ) -> &mut Self;
             fn challenge_scalars<F: $Field>(
                 &mut self,
                 label: $crate::pattern::Label,
                 count: usize,
-            ) -> Result<&mut Self, $crate::pattern::PatternError>;
+            ) -> &mut Self;
         }
 
         /// Interpret verifier messages as uniformly distributed field elements.
@@ -23,15 +23,15 @@ macro_rules! field_traits {
                 &mut self,
                 label: $crate::pattern::Label,
                 output: &mut [F],
-            ) -> Result<&mut Self, $crate::pattern::PatternError>;
+            ) -> &mut Self;
 
             fn challenge_scalars<const N: usize>(
                 &mut self,
                 label: $crate::pattern::Label,
-            ) -> Result<[F; N], $crate::pattern::PatternError> {
+            ) -> [F; N] {
                 let mut output = [F::default(); N];
-                self.fill_challenge_scalars(label, &mut output)?;
-                Ok(output)
+                self.fill_challenge_scalars(label, &mut output);
+                output
             }
         }
 
@@ -46,10 +46,7 @@ macro_rules! field_traits {
 
         /// Add field elements to the protocol transcript.
         pub trait FieldToUnitSerialize<F: $Field>: CommonFieldToUnit<F> {
-            fn add_scalars(
-                &mut self,
-                input: &[F],
-            ) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn add_scalars(&mut self, input: &[F]) -> &mut Self;
         }
 
         /// Deserialize field elements from the protocol transcript.
@@ -76,15 +73,12 @@ macro_rules! group_traits {
                 &mut self,
                 label: $crate::pattern::Label,
                 count: usize,
-            ) -> Result<&mut Self, $crate::pattern::PatternError>;
+            ) -> &mut Self;
         }
 
         /// Adds a new prover message consisting of an EC element.
         pub trait GroupToUnitSerialize<G: $Group>: CommonGroupToUnit<G> {
-            fn add_points(
-                &mut self,
-                input: &[G],
-            ) -> Result<&mut Self, $crate::pattern::PatternError>;
+            fn add_points(&mut self, input: &[G]) -> &mut Self;
         }
 
         /// Receive (and deserialize) group elements from the domain separator.

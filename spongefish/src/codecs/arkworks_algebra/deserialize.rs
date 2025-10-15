@@ -199,8 +199,8 @@ mod tests {
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
 
-        // Finalize the verifier to avoid the "Dropped unfinalized transcript" panic
-        let _ = verifier.finalize();
+        // Must call abort() to prevent drop panic
+        let _ = verifier.abort();
     }
 
     #[test]
@@ -218,8 +218,8 @@ mod tests {
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
 
-        // Finalize the verifier to avoid the "Dropped unfinalized transcript" panic
-        let _ = verifier.finalize();
+        // Must call abort() to prevent drop panic
+        let _ = verifier.abort();
     }
 
     #[test]
@@ -238,8 +238,8 @@ mod tests {
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
 
-        // Finalize the verifier to avoid the "Dropped unfinalized transcript" panic
-        let _ = verifier.finalize();
+        // Must call abort() to prevent drop panic
+        let _ = verifier.abort();
     }
 
     #[test]
@@ -258,8 +258,8 @@ mod tests {
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
 
-        // Finalize the verifier to avoid the "Dropped unfinalized transcript" panic
-        let _ = verifier.finalize();
+        // Must call abort() to prevent drop panic
+        let _ = verifier.abort();
     }
 
     #[test]
@@ -278,8 +278,8 @@ mod tests {
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
 
-        // Finalize the verifier to avoid the "Dropped unfinalized transcript" panic
-        let _ = verifier.finalize();
+        // Must call abort() to prevent drop panic
+        let _ = verifier.abort();
     }
 
     #[test]
@@ -298,7 +298,7 @@ mod tests {
         // We expect this to fail because the pattern doesn't have the right interactions
         assert!(result.is_err(), "Expected error due to pattern mismatch");
 
-        // Finalize the verifier to avoid the "Dropped unfinalized transcript" panic
-        let _ = verifier.finalize();
+        // Must call abort() to prevent drop panic
+        let _ = verifier.abort();
     }
 }

@@ -5,31 +5,31 @@ use crate::{
 
 /// Traits for patterns that handle byte arrays in a transcript.
 pub trait Pattern {
-    fn public_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError>;
-    fn message_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError>;
-    fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError>;
+    fn public_bytes(&mut self, label: Label, size: usize) -> &mut Self;
+    fn message_bytes(&mut self, label: Label, size: usize) -> &mut Self;
+    fn challenge_bytes(&mut self, label: Label, size: usize) -> &mut Self;
 }
 
 /// Implementation where `Unit = u8`
 impl Pattern for PatternState {
-    fn public_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_public::<u8>(label.clone(), Length::Fixed(size))?;
-        self.public_units(Label::Units, size)?;
-        self.end_public::<u8>(label, Length::Fixed(size))?;
-        Ok(self)
+    fn public_bytes(&mut self, label: Label, size: usize) -> &mut Self {
+        self.begin_public::<u8>(label.clone(), Length::Fixed(size));
+        self.public_units(Label::Units, size);
+        self.end_public::<u8>(label, Length::Fixed(size));
+        self
     }
 
-    fn message_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_message::<u8>(label.clone(), Length::Fixed(size))?;
-        self.message_units(Label::Units, size)?;
-        self.end_message::<u8>(label, Length::Fixed(size))?;
-        Ok(self)
+    fn message_bytes(&mut self, label: Label, size: usize) -> &mut Self {
+        self.begin_message::<u8>(label.clone(), Length::Fixed(size));
+        self.message_units(Label::Units, size);
+        self.end_message::<u8>(label, Length::Fixed(size));
+        self
     }
 
-    fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.begin_challenge::<u8>(label.clone(), Length::Fixed(size))?;
-        self.challenge_units(Label::Units, size)?;
-        self.end_challenge::<u8>(label, Length::Fixed(size))?;
-        Ok(self)
+    fn challenge_bytes(&mut self, label: Label, size: usize) -> &mut Self {
+        self.begin_challenge::<u8>(label.clone(), Length::Fixed(size));
+        self.challenge_units(Label::Units, size);
+        self.end_challenge::<u8>(label, Length::Fixed(size));
+        self
     }
 }

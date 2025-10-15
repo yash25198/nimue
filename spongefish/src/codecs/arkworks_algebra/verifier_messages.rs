@@ -5,7 +5,7 @@ use ark_serialize::CanonicalSerialize;
 use super::{CommonFieldToUnit, CommonGroupToUnit, UnitToField};
 use crate::{
     codecs::bytes_uniform_modp,
-    pattern::{Label, Length, Pattern, PatternError},
+    pattern::{Label, Length, PatternError},
     CommonUnitToBytes, DuplexSpongeInterface, UnitToBytes, UnitTranscript, VerifierState,
 };
 
@@ -26,7 +26,7 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.public_bytes(label, &buf)?;
+        self.public_bytes(label, &buf);
         Ok(buf)
     }
 }
@@ -44,7 +44,7 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.public_bytes(Label::Public, &buf)?;
+        self.public_bytes(Label::Public, &buf);
         Ok(buf)
     }
 }
@@ -54,11 +54,7 @@ where
     F: Field,
     H: DuplexSpongeInterface,
 {
-    fn fill_challenge_scalars(
-        &mut self,
-        label: Label,
-        output: &mut [F],
-    ) -> Result<&mut Self, PatternError> {
+    fn fill_challenge_scalars(&mut self, label: Label, output: &mut [F]) -> &mut Self {
         let base_field_size = bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
         let ext_degree = F::extension_degree() as usize;
         let element_size = ext_degree * base_field_size;
@@ -66,11 +62,10 @@ where
 
         let mut buf = vec![0u8; total_bytes];
 
-        self.pattern
-            .begin_challenge::<F>(label.clone(), Length::Fixed(output.len()))?;
-        self.fill_challenge_bytes(Label::BaseFieldCoefficients, &mut buf)?;
-        self.pattern
-            .end_challenge::<F>(label, Length::Fixed(output.len()))?;
+        // These methods are now infallible
+        self.begin_challenge::<F>(label.clone(), output.len());
+        self.fill_challenge_bytes(Label::BaseFieldCoefficients, &mut buf);
+        self.end_challenge::<F>(label, output.len());
         // Convert bytes to field elements by chunking the buffer
         for (elem, chunk) in output.iter_mut().zip(buf.chunks_exact(element_size)) {
             *elem = F::from_base_prime_field_elems(
@@ -81,7 +76,7 @@ where
             .expect("Could not convert bytes to field element");
         }
 
-        Ok(self)
+        self
     }
 }
 
@@ -94,11 +89,7 @@ where
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn fill_challenge_scalars(
-        &mut self,
-        label: Label,
-        output: &mut [Fp<C, N>],
-    ) -> Result<&mut Self, PatternError> {
+    fn fill_challenge_scalars(&mut self, label: Label, output: &mut [Fp<C, N>]) -> &mut Self {
         self.fill_challenge_units(label, output)
     }
 }
@@ -116,7 +107,7 @@ where
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        self.public_units(Label::Public, &flattened)?;
+        self.public_units(Label::Public, &flattened);
         Ok(())
     }
 }
@@ -142,7 +133,7 @@ where
         for point in input {
             let affine = point.into_affine();
             let (x, y) = affine.xy().unwrap();
-            self.public_units(label.clone(), &[x, y])?;
+            self.public_units(label.clone(), &[x, y]);
         }
         Ok(())
     }
@@ -169,7 +160,7 @@ where
         for point in input {
             let affine = point.into_affine();
             let (x, y) = affine.xy().unwrap();
-            self.public_units(label.clone(), &[x, y])?;
+            self.public_units(label.clone(), &[x, y]);
         }
         Ok(())
     }
@@ -180,11 +171,11 @@ where
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
+    fn public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
         for &byte in input {
-            self.public_units(label.clone(), &[Fp::from(byte)])?;
+            self.public_units(label.clone(), &[Fp::from(byte)]);
         }
-        Ok(self)
+        self
     }
 }
 
@@ -193,25 +184,21 @@ where
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn fill_challenge_bytes(
-        &mut self,
-        label: Label,
-        output: &mut [u8],
-    ) -> Result<&mut Self, PatternError> {
+    fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> &mut Self {
         if !output.is_empty() {
             let len_good = usize::min(
                 crate::codecs::random_bytes_in_random_modp(Fp::<C, N>::MODULUS),
                 output.len(),
             );
             let mut tmp = [Fp::from(0); 1];
-            self.fill_challenge_units(label.clone(), &mut tmp)?;
+            self.fill_challenge_units(label.clone(), &mut tmp);
             let buf = tmp[0].into_bigint().to_bytes_le();
             output[..len_good].copy_from_slice(&buf[..len_good]);
 
             // recursively fill the rest of the buffer
-            self.fill_challenge_bytes(label, &mut output[len_good..])?;
+            self.fill_challenge_bytes(label, &mut output[len_good..]);
         }
-        Ok(self)
+        self
     }
 }
 #[cfg(test)]
@@ -264,9 +251,7 @@ mod tests {
         let mut values2 = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
 
         let mut pattern = PatternState::new();
-        pattern
-            .message_scalars::<BabyBear>(Label::from("tag"), 2)
-            .unwrap();
+        pattern.message_scalars::<BabyBear>(Label::from("tag"), 2);
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover =
@@ -278,7 +263,7 @@ mod tests {
         for v in &values {
             v.serialize_compressed(&mut expected_bytes).unwrap();
         }
-        assert_eq!(prover.narg_string(), expected_bytes);
+        assert_eq!(prover.narg_string().unwrap(), expected_bytes);
 
         let proof = prover.finalize().unwrap();
 
@@ -304,9 +289,7 @@ mod tests {
         point.serialize_compressed(&mut expected).unwrap();
 
         let mut pattern = PatternState::new();
-        pattern
-            .message_points::<Curve>(Label::custom("generator"), 1)
-            .unwrap();
+        pattern.message_points::<Curve>(Label::custom("generator"), 1);
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover =
@@ -314,7 +297,7 @@ mod tests {
         let _ = prover.message_points(Label::custom("generator"), &[point]);
 
         // Verify narg_string matches expected serialization
-        assert_eq!(prover.narg_string(), expected);
+        assert_eq!(prover.narg_string().unwrap(), expected);
 
         let proof = prover.finalize().unwrap();
 
@@ -348,22 +331,18 @@ mod tests {
     fn test_unit_to_field_fill_challenge_scalars_u8() {
         // Create a pattern with a message scalar (not challenge)
         let mut pattern = PatternState::new();
-        pattern
-            .message_scalars::<BabyBear>(Label::from("tag"), 1)
-            .unwrap();
+        pattern.message_scalars::<BabyBear>(Label::from("tag"), 1);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
 
         let mut out = [BabyBear::ONE; 1];
-        prover
-            .message_scalars(Label::from("tag"), &mut out)
-            .unwrap();
+        prover.message_scalars(Label::from("tag"), &mut out);
 
         // Verify narg_string
         let mut expected = Vec::new();
         BabyBear::ONE.serialize_compressed(&mut expected).unwrap();
-        assert_eq!(prover.narg_string(), expected);
+        assert_eq!(prover.narg_string().unwrap(), expected);
 
         // Finalize the prover to get the proof
         let proof = prover.finalize().unwrap();

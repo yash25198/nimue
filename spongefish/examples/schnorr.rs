@@ -29,33 +29,22 @@ use spongefish::{
         VerifierGroupMessageExt,
     },
     codecs::unit::Pattern as _,
-    pattern::{Label, Pattern, PatternState},
+    pattern::{InteractionPattern, Label, PatternState},
     DefaultHash, ProofError, ProofResult, ProverState, VerifierState,
 };
 
 /// Create the interaction pattern for Schnorr protocol
-fn schnorr_pattern<G: CurveGroup>() -> PatternState
-where
-    PatternState: GroupPattern + FieldPattern,
-{
+fn schnorr_pattern<G: CurveGroup>() -> InteractionPattern {
     let mut pattern = PatternState::new();
-
-    pattern.begin_protocol(Label::from("schnorr")).unwrap();
-    pattern.message_points::<G>(Label::from("generator"), 1).unwrap();
     pattern
+        .message_points::<G>(Label::from("generator"), 1)
         .message_points::<G>(Label::from("public_key"), 1)
-        .unwrap();
-    pattern.ratchet().unwrap();
-    pattern
+        .ratchet()
         .message_points::<G>(Label::from("commitment"), 1)
-        .unwrap();
-    pattern
         .challenge_scalars::<G::ScalarField>(Label::from("challenge"), 1)
-        .unwrap();
-    pattern.message_scalars::<G::ScalarField>(Label::from("response"), 1).unwrap();
-    pattern.end_protocol(Label::from("schnorr")).unwrap();
+        .message_scalars::<G::ScalarField>(Label::from("response"), 1);
 
-    pattern
+    pattern.finalize().expect("Failed to finalize pattern")
 }
 
 /// Key generation: returns (secret_key, public_key)
@@ -80,20 +69,20 @@ where
         + UnitToField<G::ScalarField>,
 {
     // Generate random nonce
-    let k = G::ScalarField::rand(prover.rng());
+    let k = G::ScalarField::rand(prover.rng().unwrap());
     let K = P * k;
 
     // Send commitment
-    prover.message_points(Label::from("commitment"), &[K])?;
+    prover.message_points(Label::from("commitment"), &[K]);
 
     // Get challenge from transcript (Fiat-Shamir)
     let mut c_buf = [G::ScalarField::default(); 1];
-    prover.fill_challenge_scalars(Label::from("challenge"), &mut c_buf)?;
+    prover.fill_challenge_scalars(Label::from("challenge"), &mut c_buf);
     let c = c_buf[0];
 
     // Compute and send response
     let r = k + c * x;
-    prover.message_scalars(Label::from("response"), &[r])?;
+    prover.message_scalars(Label::from("response"), &[r]);
 
     Ok(())
 }
@@ -107,17 +96,17 @@ where
         + VerifierFieldMessageExt<G::ScalarField>
         + UnitToField<G::ScalarField>,
 {
-    // Read commitment - USING EXTENSION TRAIT!
+    // Read commitment
     let mut K_buf = [G::default(); 1];
     verifier.fill_message_points(Label::from("commitment"), &mut K_buf)?;
     let K = K_buf[0];
 
     // Generate challenge from transcript (same as prover via Fiat-Shamir)
     let mut c_buf = [G::ScalarField::default(); 1];
-    verifier.fill_challenge_scalars(Label::from("challenge"), &mut c_buf)?;
+    verifier.fill_challenge_scalars(Label::from("challenge"), &mut c_buf);
     let c = c_buf[0];
 
-    // Read response - USING EXTENSION TRAIT!
+    // Read response
     let mut r_buf = [G::ScalarField::default(); 1];
     verifier.fill_message_scalars(Label::from("response"), &mut r_buf)?;
     let r = r_buf[0];
@@ -137,72 +126,64 @@ fn main() {
     type G = ark_curve25519::EdwardsProjective;
 
     // Step 1: Create and finalize the interaction pattern
-    let pattern = Arc::new(
-        schnorr_pattern::<G>()
-            .finalize()
-            .expect("Failed to finalize pattern"),
-    );
+    let pattern = Arc::new(schnorr_pattern::<G>());
     println!("✓ Pattern created and finalized");
 
     // Step 2: Setup - generate keys
+    #[allow(non_snake_case)]
     let P = G::generator();
+    #[allow(non_snake_case)]
     let (x, X) = keygen::<G>();
     println!("✓ Keys generated\n");
 
-    // Step 3: Prover generates proof - CLEAN API WITH EXTENSION TRAITS!
+    // Step 3: Prover generates proof
     let proof = {
         let mut prover = ProverState::new(pattern.clone(), OsRng);
 
+        // Send statement (generator and public key)
         prover
-            .begin_protocol(Label::from("schnorr"))
-            .expect("Failed to begin protocol")
-            .message_points(Label::from("generator"), &[P]) // Extension trait!
-            .expect("Failed to add generator")
-            .message_points(Label::from("public_key"), &[X]) // Extension trait!
-            .expect("Failed to add public key")
-            .ratchet()
-            .expect("Failed to ratchet");
+            .message_points(Label::from("generator"), &[P])
+            .message_points(Label::from("public_key"), &[X])
+            .ratchet();
 
-        // Call prove (breaks the chain, but that's fine)
-        prove(&mut prover, P, x).expect("Proving failed");
+        // Generate and send proof
+        prove(&mut prover, P, x).expect("Prove failed");
 
-        prover
-            .end_protocol(Label::from("schnorr"))
-            .expect("Failed to end protocol");
-
-        prover.finalize().expect("Prover finalize failed")
+        prover.finalize()
     };
 
-    println!("✓ Proof generated ({} bytes)\n", proof.len());
+    let proof = match proof {
+        Ok(p) => {
+            println!("✓ Proof generated by prover");
+            p
+        }
+        Err(e) => {
+            println!("✗ Proving failed: {:?}", e);
+            std::process::exit(1);
+        }
+    };
 
-    // Step 4: Verifier checks proof - CLEAN API WITH EXTENSION TRAITS!
+    // Step 4: Verifier checks proof
     let result = {
         let mut verifier = VerifierState::new(pattern.clone(), &proof);
 
-        verifier
-            .begin_protocol(Label::from("schnorr"))
-            .expect("Failed to begin protocol");
-
+        // Read statement
         let mut generator = [G::default(); 1];
         verifier
-            .fill_message_points(Label::from("generator"), &mut generator) // Extension trait!
+            .fill_message_points(Label::from("generator"), &mut generator)
             .expect("Failed to read generator");
 
         let mut public_key = [G::default(); 1];
         verifier
-            .fill_message_points(Label::from("public_key"), &mut public_key) // Extension trait!
+            .fill_message_points(Label::from("public_key"), &mut public_key)
             .expect("Failed to read public key");
 
         verifier.ratchet().expect("Failed to ratchet");
 
         println!("✓ Statement read by verifier");
 
-        // Call verify (breaks the chain, but that's fine)
+        // Verify the proof
         verify(&mut verifier, generator[0], public_key[0]).expect("Verification failed");
-
-        verifier
-            .end_protocol(Label::from("schnorr"))
-            .expect("Failed to end protocol");
 
         verifier.finalize()
     };

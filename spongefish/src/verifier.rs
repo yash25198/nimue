@@ -4,18 +4,18 @@ use crate::{
     duplex_sponge::{DuplexSpongeInterface, Unit},
     pattern::{
         Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, Pattern, PatternError,
-        PatternPlayer,
+        PatternPlayer, PatternResult,
     },
-    traits::{BytesToUnitDeserialize, UnitTranscript},
-    CommonUnitToBytes, DefaultHash, ProofResult, UnitToBytes,
+    traits::BytesToUnitDeserialize,
+    CommonUnitToBytes, DefaultHash, ProofResult, UnitToBytes, UnitTranscript,
 };
 
-/// [`VerifierState`] is the verifier state.
+/// Inner state for the verifier.
 ///
-/// Internally, it simply contains a stateful hash.
-/// Given as input an [`DomainSeparator`] and a NARG string, it allows to
-/// de-serialize elements from the NARG string and make them available to the zero-knowledge verifier.
-pub struct VerifierState<'a, H = DefaultHash, U = u8>
+/// This type contains the actual logic for verifier operations with explicit error returns.
+///
+/// Use [`VerifierState`] (the wrapper type) for ergonomic method chaining.
+pub struct VerifierStateInner<'a, H = DefaultHash, U = u8>
 where
     H: DuplexSpongeInterface<U>,
     U: Unit,
@@ -27,8 +27,8 @@ where
     pub(crate) _unit_type: PhantomData<U>,
 }
 
-impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
-    /// Creates a new [`VerifierState`] instance with the given sponge and domain separator.
+impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierStateInner<'a, H, U> {
+    /// Create a new verifier state.
     #[must_use]
     pub fn new(pattern: Arc<InteractionPattern>, narg_string: &'a [u8]) -> Self {
         let iv = pattern.domain_separator();
@@ -36,12 +36,11 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             pattern: PatternPlayer::new(pattern.clone()),
             duplex_sponge: H::new(iv),
             narg_string,
-            cursor: 0, // Index of the next byte to read from the NARG string
+            cursor: 0,
             _unit_type: PhantomData,
         };
+
         // Handle the automatic protocol wrapping that PatternState::finalize() adds
-        // The pattern starts with Begin Protocol, so we need to consume it
-        // Cache the interactions slice to avoid repeated Arc dereferences
         let interactions = pattern.interactions();
         let has_protocol_wrapper = interactions
             .first()
@@ -53,38 +52,35 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
             .unwrap_or(false);
 
         if has_protocol_wrapper {
-            if let Err(e) = state
+            state
                 .pattern
-                .begin::<()>(Label::Protocol, Kind::Protocol, Length::None)
-            {
-                // If we fail to begin, mark as finalized to avoid panic in Drop
-                let _ = state.pattern.abort();
-                panic!("Failed to begin protocol: {e}");
+                .begin::<()>(Label::Protocol, Kind::Protocol, Length::None);
+            // Check if error occurred
+            if state.pattern.has_error() {
+                panic!("Failed to begin protocol");
             }
         }
         state
     }
 
-    /// Read units from the proof
-    pub fn fill_next_units(
-        &mut self,
-        label: Label,
-        output: &mut [U],
-    ) -> Result<&mut Self, PatternError> {
-        self.pattern.interact(Interaction::new::<U>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            label,
-            Length::Fixed(output.len()),
-        ))?;
+    /// Read units from the proof.
+    pub fn fill_next_units(&mut self, label: Label, output: &mut [U]) -> Result<(), PatternError> {
+        self.pattern
+            .inner_mut()
+            .ok_or(PatternError::AlreadyFinalized)?
+            .interact(Interaction::new::<U>(
+                Hierarchy::Atomic,
+                Kind::Message,
+                label,
+                Length::Fixed(output.len()),
+            ))?;
 
         // Read from narg_string and update cursor
         let bytes_needed = output.len() * std::mem::size_of::<U>();
         if self.cursor + bytes_needed > self.narg_string.len() {
-            return Err(PatternError::SizeError(format!(
-                "Insufficient transcript remaining for deserialization"
-            ))
-            .into());
+            return Err(PatternError::SizeError(
+                "Insufficient transcript remaining for deserialization".to_string(),
+            ));
         }
 
         U::read(
@@ -98,75 +94,29 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         // Also absorb into the duplex sponge for challenge generation
         self.duplex_sponge.absorb_unchecked(output);
 
-        Ok(self)
+        Ok(())
     }
 
-    /// Begin a message interaction
-    pub fn begin_message(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
+    /// Ratchet the sponge state.
+    pub fn ratchet(&mut self) -> Result<(), PatternError> {
         self.pattern
-            .begin_message::<U>(label, Length::Fixed(count))?;
-        Ok(self)
-    }
-
-    /// End a message interaction
-    pub fn end_message(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
-        self.pattern.end_message::<U>(label, Length::Fixed(count))?;
-        Ok(self)
-    }
-
-    /// Begin a challenge interaction
-    pub fn begin_challenge<T>(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
-        self.pattern
-            .begin_challenge::<T>(label, Length::Fixed(count))?;
-        Ok(self)
-    }
-
-    /// End a challenge interaction
-    pub fn end_challenge<T>(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
-        self.pattern
-            .end_challenge::<T>(label, Length::Fixed(count))?;
-        Ok(self)
-    }
-
-    /// Begin a public interaction
-    pub fn begin_public(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
-        self.pattern
-            .begin_public::<U>(label, Length::Fixed(count))?;
-        Ok(self)
-    }
-
-    /// End a public interaction
-    pub fn end_public(&mut self, label: Label, count: usize) -> ProofResult<&mut Self> {
-        self.pattern.end_public::<U>(label, Length::Fixed(count))?;
-        Ok(self)
-    }
-
-    /// Begin a protocol
-    pub fn begin_protocol(&mut self, label: Label) -> ProofResult<&mut Self> {
-        self.pattern.begin_protocol(label)?;
-        Ok(self)
-    }
-
-    /// End a protocol
-    pub fn end_protocol(&mut self, label: Label) -> ProofResult<&mut Self> {
-        self.pattern.end_protocol(label)?;
-        Ok(self)
-    }
-
-    #[inline]
-    pub fn ratchet(&mut self) -> ProofResult<&mut Self> {
-        self.pattern.interact(Interaction::new::<()>(
-            Hierarchy::Atomic,
-            Kind::Protocol,
-            Label::Ratchet,
-            Length::None,
-        ))?;
+            .inner_mut()
+            .ok_or(PatternError::AlreadyFinalized)?
+            .interact(Interaction::new::<()>(
+                Hierarchy::Atomic,
+                Kind::Protocol,
+                Label::Ratchet,
+                Length::None,
+            ))?;
         self.duplex_sponge.ratchet_unchecked();
-        Ok(self)
+        Ok(())
     }
 
+    /// Read a hint from the proof.
     pub fn hint_bytes(&mut self, label: Label) -> Result<&'a [u8], std::io::Error> {
         self.pattern
+            .inner_mut()
+            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "Already finalized"))?
             .interact(Interaction::new::<u8>(
                 Hierarchy::Atomic,
                 Kind::Hint,
@@ -206,17 +156,58 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
         Ok(hint)
     }
 
-    pub fn abort(mut self) -> Result<(), PatternError> {
-        self.pattern.abort()?;
+    /// Add public units to the transcript.
+    pub fn public_units(&mut self, label: Label, input: &[U]) -> Result<(), PatternError> {
+        self.pattern
+            .inner_mut()
+            .ok_or(PatternError::AlreadyFinalized)?
+            .interact(Interaction::new::<U>(
+                Hierarchy::Atomic,
+                Kind::Public,
+                label,
+                Length::Fixed(input.len()),
+            ))?;
+
+        self.duplex_sponge.absorb_unchecked(input);
+
         Ok(())
     }
 
-    pub fn finalize(mut self) -> Result<(), PatternError> {
+    /// Fill output buffer with challenge units.
+    pub fn fill_challenge_units(
+        &mut self,
+        label: Label,
+        output: &mut [U],
+    ) -> Result<(), PatternError> {
+        self.pattern
+            .inner_mut()
+            .ok_or(PatternError::AlreadyFinalized)?
+            .interact(Interaction::new::<U>(
+                Hierarchy::Atomic,
+                Kind::Challenge,
+                label,
+                Length::Fixed(output.len()),
+            ))?;
+
+        self.duplex_sponge.squeeze_unchecked(output);
+
+        Ok(())
+    }
+
+    /// Abort the verifier.
+    pub fn abort_inner(&mut self) -> Result<(), PatternError> {
+        self.pattern.abort();
+        if self.pattern.has_error() {
+            Err(PatternError::AlreadyFinalized)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Finalize the verifier.
+    pub fn finalize_inner(mut self, pattern: &Arc<InteractionPattern>) -> Result<(), PatternError> {
         // Handle the automatic protocol wrapping that PatternState::finalize() adds
-        // The pattern ends with End Protocol, so we need to consume it
-        // Cache the pattern reference and interactions to avoid repeated Arc operations
-        let arc_pattern = self.pattern.pattern();
-        let interactions = arc_pattern.interactions();
+        let interactions = pattern.interactions();
         let has_protocol_end = interactions
             .last()
             .map(|i| {
@@ -228,52 +219,197 @@ impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
 
         if has_protocol_end {
             self.pattern
-                .end::<()>(Label::Protocol, Kind::Protocol, Length::None)?;
+                .end::<()>(Label::Protocol, Kind::Protocol, Length::None);
         }
 
-        self.pattern.finalize()?;
-        Ok(())
+        if self.pattern.has_error() {
+            return Err(PatternError::AlreadyFinalized);
+        }
+
+        self.pattern.finalize()
     }
 }
 
-impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'_, H, U> {
-    fn public_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError> {
-        // Record single atomic interaction for public units
-        self.pattern.interact(Interaction::new::<U>(
-            Hierarchy::Atomic,
-            Kind::Public,
-            label,
-            Length::Fixed(input.len()),
-        ))?;
+/// [`VerifierState`] is the verifier state.
+///
+/// Internally, it simply contains a stateful hash.
+/// Given as input an [`InteractionPattern`] and a NARG string, it allows to
+/// de-serialize elements from the NARG string and make them available to the zero-knowledge verifier.
+pub type VerifierState<'a, H = DefaultHash, U = u8> = PatternResult<VerifierStateInner<'a, H, U>>;
 
-        self.duplex_sponge.absorb_unchecked(input);
-
-        Ok(self)
+impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
+    /// Create a new [`VerifierState`] instance with the given pattern and NARG string.
+    #[must_use]
+    pub fn new(pattern: Arc<InteractionPattern>, narg_string: &'a [u8]) -> Self {
+        PatternResult::from_value(VerifierStateInner::new(pattern, narg_string))
     }
 
-    #[inline]
-    fn fill_challenge_units(
+    /// Read units from the proof.
+    pub fn fill_next_units(
         &mut self,
         label: Label,
         output: &mut [U],
     ) -> Result<&mut Self, PatternError> {
-        // Record single atomic interaction for challenge units
-        self.pattern.interact(Interaction::new::<U>(
-            Hierarchy::Atomic,
-            Kind::Challenge,
-            label,
-            Length::Fixed(output.len()),
-        ))?;
+        if let Some(inner) = self.inner_mut() {
+            inner.fill_next_units(label, output)?;
+            Ok(self)
+        } else {
+            Err(PatternError::AlreadyFinalized)
+        }
+    }
 
-        self.duplex_sponge.squeeze_unchecked(output);
+    /// Begin a message interaction.
+    pub fn begin_message<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner
+                .pattern
+                .begin_message::<T>(label, Length::Fixed(count));
+        }
+        self
+    }
 
-        Ok(self)
+    /// End a message interaction.
+    pub fn end_message(&mut self, label: Label, count: usize) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner.pattern.end_message::<U>(label, Length::Fixed(count));
+        }
+        self
+    }
+
+    /// Begin a challenge interaction.
+    pub fn begin_challenge<T>(&mut self, label: Label, count: usize) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner
+                .pattern
+                .begin_challenge::<T>(label, Length::Fixed(count));
+        }
+        self
+    }
+
+    /// End a challenge interaction.
+    pub fn end_challenge<T>(&mut self, label: Label, count: usize) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner
+                .pattern
+                .end_challenge::<T>(label, Length::Fixed(count));
+        }
+        self
+    }
+
+    /// Begin a public interaction.
+    pub fn begin_public<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner.pattern.begin_public::<T>(label, Length::Fixed(count));
+        }
+        self
+    }
+
+    /// End a public interaction.
+    pub fn end_public<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner.pattern.end_public::<T>(label, Length::Fixed(count));
+        }
+        self
+    }
+
+    /// Begin a protocol.
+    pub fn begin_protocol(&mut self, label: Label) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner.pattern.begin_protocol(label);
+        }
+        self
+    }
+
+    /// End a protocol.
+    pub fn end_protocol(&mut self, label: Label) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner.pattern.end_protocol(label);
+        }
+        self
+    }
+
+    /// Ratchet the sponge state.
+    #[inline]
+    pub fn ratchet(&mut self) -> ProofResult<&mut Self> {
+        if let Some(inner) = self.inner_mut() {
+            inner.ratchet()?;
+            Ok(self)
+        } else {
+            Err(PatternError::AlreadyFinalized.into())
+        }
+    }
+
+    /// Read a hint from the proof.
+    pub fn hint_bytes(&mut self, label: Label) -> Result<&'a [u8], std::io::Error> {
+        if let Some(inner) = self.inner_mut() {
+            inner.hint_bytes(label)
+        } else {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "Already finalized",
+            ))
+        }
+    }
+
+    /// Abort the verifier.
+    pub fn abort(mut self) -> Result<(), PatternError> {
+        if self.has_error() {
+            // Already has an error, just mark as finalized to prevent drop panic
+            if let Some(inner) = self.inner_mut() {
+                inner.pattern.abort();
+            }
+            return Ok(());
+        }
+
+        if let Some(inner) = self.inner_mut() {
+            inner.abort_inner()
+        } else {
+            Err(PatternError::AlreadyFinalized)
+        }
+    }
+
+    /// Finalize the verifier.
+    pub fn finalize(self) -> Result<(), PatternError> {
+        let inner = self.into_result()?;
+        let pattern = inner
+            .pattern
+            .pattern()
+            .ok_or(PatternError::AlreadyFinalized)?
+            .clone();
+        inner.finalize_inner(&pattern)
+    }
+}
+
+impl<H: DuplexSpongeInterface<U>, U: Unit> UnitTranscript<U> for VerifierState<'_, H, U> {
+    fn public_units(&mut self, label: Label, input: &[U]) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            if let Err(e) = inner.public_units(label, input) {
+                self.set_error(e.into());
+            }
+        }
+        self
+    }
+
+    #[inline]
+    fn fill_challenge_units(&mut self, label: Label, output: &mut [U]) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            if let Err(e) = inner.fill_challenge_units(label, output) {
+                self.set_error(e.into());
+            }
+        }
+        self
     }
 }
 
 impl<H: DuplexSpongeInterface<U>, U: Unit> core::fmt::Debug for VerifierState<'_, H, U> {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.debug_tuple("VerifierState").field(&self.pattern).finish()
+        if let Some(inner) = self.inner() {
+            f.debug_tuple("VerifierState")
+                .field(&inner.pattern)
+                .finish()
+        } else {
+            write!(f, "VerifierState(finalized)")
+        }
     }
 }
 
@@ -283,28 +419,25 @@ where
     U: Unit,
     H: DuplexSpongeInterface<U>,
 {
-    fn abort(&mut self) -> Result<(), PatternError> {
-        self.pattern.abort()
+    fn abort(&mut self) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner.pattern.abort();
+        }
+        self
     }
 
-    fn begin<T: ?Sized>(
-        &mut self,
-        label: Label,
-        kind: Kind,
-        length: Length,
-    ) -> Result<&mut Self, PatternError> {
-        self.pattern.begin::<T>(label, kind, length)?;
-        Ok(self)
+    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner.pattern.begin::<T>(label, kind, length);
+        }
+        self
     }
 
-    fn end<T: ?Sized>(
-        &mut self,
-        label: Label,
-        kind: Kind,
-        length: Length,
-    ) -> Result<&mut Self, PatternError> {
-        self.pattern.end::<T>(label, kind, length)?;
-        Ok(self)
+    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner.pattern.end::<T>(label, kind, length);
+        }
+        self
     }
 }
 
@@ -315,35 +448,42 @@ impl<H: DuplexSpongeInterface<u8>> BytesToUnitDeserialize for VerifierState<'_, 
         label: Label,
         output: &mut [u8],
     ) -> Result<&mut Self, PatternError> {
-        self.pattern
-            .begin_message::<u8>(label.clone(), Length::Fixed(output.len()))?;
-        self.fill_next_units(Label::Units, output)?;
-
-        self.pattern
-            .end_message::<u8>(label, Length::Fixed(output.len()))?;
-
-        Ok(self)
+        if let Some(inner) = self.inner_mut() {
+            inner
+                .pattern
+                .begin_message::<u8>(label.clone(), Length::Fixed(output.len()));
+            inner.fill_next_units(Label::Units, output)?;
+            inner
+                .pattern
+                .end_message::<u8>(label, Length::Fixed(output.len()));
+            Ok(self)
+        } else {
+            Err(PatternError::AlreadyFinalized)
+        }
     }
 }
 
 impl<H: DuplexSpongeInterface<u8>> CommonUnitToBytes for VerifierState<'_, H, u8> {
-    fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
+    fn public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
         self.public_units(label, input)
     }
 }
 
 impl<H: DuplexSpongeInterface<u8>> UnitToBytes for VerifierState<'_, H, u8> {
-    fn fill_challenge_bytes(
-        &mut self,
-        label: Label,
-        output: &mut [u8],
-    ) -> Result<&mut Self, PatternError> {
-        self.pattern
-            .begin_challenge::<u8>(label.clone(), Length::Fixed(output.len()))?;
-        self.fill_challenge_units(Label::Units, output)?;
-        self.pattern
-            .end_challenge::<u8>(label, Length::Fixed(output.len()))?;
-        Ok(self)
+    fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner
+                .pattern
+                .begin_challenge::<u8>(label.clone(), Length::Fixed(output.len()));
+            let result = inner.fill_challenge_units(Label::Units, output);
+            inner
+                .pattern
+                .end_challenge::<u8>(label, Length::Fixed(output.len()));
+            if let Err(e) = result {
+                self.set_error(e.into());
+            }
+        }
+        self
     }
 }
 
@@ -352,44 +492,81 @@ impl<H> crate::codecs::bytes::Pattern for VerifierState<'_, H, u8>
 where
     H: DuplexSpongeInterface<u8>,
 {
-    fn public_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.pattern
-            .begin_public::<u8>(label.clone(), Length::Fixed(size))?;
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Public,
-            Label::Units,
-            Length::Fixed(size),
-        ))?;
-        self.pattern.end_public::<u8>(label, Length::Fixed(size))?;
-        Ok(self)
+    fn public_bytes(&mut self, label: Label, size: usize) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner
+                .pattern
+                .begin_public::<u8>(label.clone(), Length::Fixed(size));
+            let result = inner
+                .pattern
+                .inner_mut()
+                .ok_or(PatternError::AlreadyFinalized)
+                .and_then(|i| {
+                    i.interact(Interaction::new::<u8>(
+                        Hierarchy::Atomic,
+                        Kind::Public,
+                        Label::Units,
+                        Length::Fixed(size),
+                    ))
+                });
+            inner.pattern.end_public::<u8>(label, Length::Fixed(size));
+            if let Err(e) = result {
+                self.set_error(e.into());
+            }
+        }
+        self
     }
 
-    fn message_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.pattern
-            .begin_message::<u8>(label.clone(), Length::Fixed(size))?;
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Message,
-            Label::Units,
-            Length::Fixed(size),
-        ))?;
-        self.pattern.end_message::<u8>(label, Length::Fixed(size))?;
-        Ok(self)
+    fn message_bytes(&mut self, label: Label, size: usize) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner
+                .pattern
+                .begin_message::<u8>(label.clone(), Length::Fixed(size));
+            let result = inner
+                .pattern
+                .inner_mut()
+                .ok_or(PatternError::AlreadyFinalized)
+                .and_then(|i| {
+                    i.interact(Interaction::new::<u8>(
+                        Hierarchy::Atomic,
+                        Kind::Message,
+                        Label::Units,
+                        Length::Fixed(size),
+                    ))
+                });
+            inner.pattern.end_message::<u8>(label, Length::Fixed(size));
+            if let Err(e) = result {
+                self.set_error(e.into());
+            }
+        }
+        self
     }
 
-    fn challenge_bytes(&mut self, label: Label, size: usize) -> Result<&mut Self, PatternError> {
-        self.pattern
-            .begin_challenge::<u8>(label.clone(), Length::Fixed(size))?;
-        self.pattern.interact(Interaction::new::<u8>(
-            Hierarchy::Atomic,
-            Kind::Challenge,
-            Label::Units,
-            Length::Fixed(size),
-        ))?;
-        self.pattern
-            .end_challenge::<u8>(label, Length::Fixed(size))?;
-        Ok(self)
+    fn challenge_bytes(&mut self, label: Label, size: usize) -> &mut Self {
+        if let Some(inner) = self.inner_mut() {
+            inner
+                .pattern
+                .begin_challenge::<u8>(label.clone(), Length::Fixed(size));
+            let result = inner
+                .pattern
+                .inner_mut()
+                .ok_or(PatternError::AlreadyFinalized)
+                .and_then(|i| {
+                    i.interact(Interaction::new::<u8>(
+                        Hierarchy::Atomic,
+                        Kind::Challenge,
+                        Label::Units,
+                        Length::Fixed(size),
+                    ))
+                });
+            inner
+                .pattern
+                .end_challenge::<u8>(label, Length::Fixed(size));
+            if let Err(e) = result {
+                self.set_error(e.into());
+            }
+        }
+        self
     }
 }
 
@@ -462,7 +639,6 @@ mod tests {
 
     #[test]
     fn test_fill_next_units_with_message() {
-        // Create pattern using high-level method
         let mut pattern = PatternState::new();
         let _ = pattern.message_units(Label::Units, 3);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
@@ -472,7 +648,7 @@ mod tests {
 
         assert!(vs.fill_next_units(Label::Units, &mut buf).is_ok());
         assert_eq!(buf, *b"abc");
-        assert_eq!(*vs.duplex_sponge.absorbed.borrow(), b"abc");
+        assert_eq!(*vs.inner().unwrap().duplex_sponge.absorbed.borrow(), b"abc");
         vs.finalize().expect("Failed to finalize");
     }
 
@@ -483,14 +659,13 @@ mod tests {
             .expect("Failed to finalize pattern");
         let transcript = b"abc";
         let vs = VerifierState::<DummySponge>::new(Arc::new(pattern), transcript);
-        assert_eq!(vs.narg_string, b"abc");
-        assert_eq!(vs.cursor, 0);
+        assert_eq!(vs.inner().unwrap().narg_string, b"abc");
+        assert_eq!(vs.inner().unwrap().cursor, 0);
         let _ = vs.finalize();
     }
 
     #[test]
     fn test_fill_next_units_with_insufficient_data_errors() {
-        // Create pattern with more data than available
         let mut pattern = PatternState::new();
         let _ = pattern.message_units(Label::Units, 4);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
@@ -504,33 +679,33 @@ mod tests {
 
     #[test]
     fn test_ratcheting_success() {
-        // Create pattern with ratchet
         let mut pattern = PatternState::new();
         let _ = pattern.ratchet();
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), &[]);
         vs.ratchet().expect("Failed to ratchet");
-        assert!(*vs.duplex_sponge.ratcheted.borrow());
+        assert!(*vs.inner().unwrap().duplex_sponge.ratcheted.borrow());
         vs.finalize().expect("Failed to finalize");
     }
 
     #[test]
     fn test_unit_transcript_public_units() {
-        // Create pattern with public units
         let mut pattern = PatternState::new();
         let _ = pattern.public_units(Label::from("public_units"), 2);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"..");
         let _ = vs.public_units(Label::from("public_units"), &[1, 2]);
-        assert_eq!(*vs.duplex_sponge.absorbed.borrow(), &[1, 2]);
+        assert_eq!(
+            *vs.inner().unwrap().duplex_sponge.absorbed.borrow(),
+            &[1, 2]
+        );
         vs.finalize().expect("Failed to finalize");
     }
 
     #[test]
     fn test_unit_transcript_fill_challenge_units() {
-        // Create pattern with challenge
         let mut pattern = PatternState::new();
         let _ = pattern.challenge_units(Label::from("challenge"), 4);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
@@ -538,8 +713,7 @@ mod tests {
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"");
 
         let mut out = [0u8; 4];
-        vs.fill_challenge_units(Label::from("challenge"), &mut out)
-            .expect("Failed to fill challenge units");
+        vs.fill_challenge_units(Label::from("challenge"), &mut out);
 
         assert_eq!(out, [0, 1, 2, 3]);
         vs.finalize().expect("Failed to finalize");
@@ -547,11 +721,8 @@ mod tests {
 
     #[test]
     fn test_fill_next_bytes_impl() {
-        // Create pattern with message bytes
         let mut pattern = PatternState::new();
-        pattern
-            .message_bytes(Label::from("bytes"), 3)
-            .expect("Failed to create pattern");
+        pattern.message_bytes(Label::from("bytes"), 3);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"xyz");
@@ -564,22 +735,17 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_verifier_valid_hint() {
-        // Create pattern with hint
         let mut pattern = PatternState::new();
         let _ = pattern.hint_bytes_dynamic(Label::from("hint_bytes"));
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let hint = b"abc123";
 
-        // Create prover and add hint
         let mut prover: ProverState = ProverState::from(pattern.as_ref());
-        prover
-            .hint_bytes(Label::from("hint_bytes"), hint)
-            .expect("Failed to add hint bytes");
+        prover.hint_bytes(Label::from("hint_bytes"), hint);
 
         let narg = prover.finalize().expect("Failed to finalize prover");
 
-        // Verify with verifier
         let mut vs: VerifierState = VerifierState::new(pattern, &narg);
         let result = vs.hint_bytes(Label::from("hint_bytes")).unwrap();
 
@@ -589,21 +755,16 @@ mod tests {
 
     #[test]
     fn test_hint_bytes_verifier_empty_hint() {
-        // Create pattern with hint
         let mut pattern = PatternState::new();
         let _ = pattern.hint_bytes_dynamic(Label::from("hint_bytes"));
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let hint = b"";
 
-        // Create prover and add empty hint
         let mut prover: ProverState = ProverState::from(pattern.as_ref());
-        prover
-            .hint_bytes(Label::from("hint_bytes"), hint)
-            .expect("Failed to add hint bytes");
+        prover.hint_bytes(Label::from("hint_bytes"), hint);
         let narg = prover.finalize().expect("Failed to finalize");
 
-        // Verify with verifier
         let mut vs: VerifierState = VerifierState::new(pattern, &narg);
         let result = vs.hint_bytes(Label::from("hint_bytes")).unwrap();
 
@@ -614,11 +775,8 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_no_hint_op() {
         let mut pattern = PatternState::new();
-        pattern
-            .public_bytes(Label::custom("public_bytes"), 2)
-            .unwrap();
+        pattern.public_bytes(Label::custom("public_bytes"), 2);
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
-        // Manually construct a hint buffer (length = 6, followed by bytes)
         let narg = hex::decode("06000000616263313233").unwrap();
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), &narg);
         let err = vs.hint_bytes(Label::custom("hint_bytes"));
@@ -628,13 +786,10 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_length_prefix_too_short() {
         let mut pattern = PatternState::new();
-        pattern
-            .hint_bytes_dynamic(Label::custom("hint_bytes"))
-            .expect("Failed to add hint bytes to pattern");
+        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        // Provide only 3 bytes, which is not enough for a u32 length
-        let narg = &[1, 2, 3]; // less than 4 bytes
+        let narg = &[1, 2, 3];
         let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), narg);
         let err = vs.hint_bytes(Label::custom("hint_bytes")).unwrap_err();
 
@@ -645,9 +800,7 @@ mod tests {
     #[test]
     fn test_hint_bytes_verifier_declared_hint_too_long() {
         let mut pattern = PatternState::new();
-        pattern
-            .hint_bytes_dynamic(Label::custom("hint_bytes"))
-            .expect("Failed to add hint bytes to pattern");
+        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let narg = [5u8, 0, 0, 0, b'a', b'b'];

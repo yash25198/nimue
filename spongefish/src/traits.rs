@@ -5,31 +5,23 @@ use crate::{
 
 /// Absorbing and squeezing native elements from the sponge.
 pub trait UnitTranscript<U: Unit> {
-    fn public_units(&mut self, label: Label, input: &[U]) -> Result<&mut Self, PatternError>;
-    fn fill_challenge_units(
-        &mut self,
-        label: Label,
-        output: &mut [U],
-    ) -> Result<&mut Self, PatternError>;
+    fn public_units(&mut self, label: Label, input: &[U]) -> &mut Self;
+    fn fill_challenge_units(&mut self, label: Label, output: &mut [U]) -> &mut Self;
 }
 
 /// Absorbing bytes from the sponge, without reading or writing them into the protocol transcript.
 pub trait CommonUnitToBytes {
-    fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError>;
+    fn public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self;
 }
 
 /// Squeezing bytes from the sponge.
 pub trait UnitToBytes {
-    fn fill_challenge_bytes(
-        &mut self,
-        label: Label,
-        output: &mut [u8],
-    ) -> Result<&mut Self, PatternError>;
+    fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> &mut Self;
 
-    fn challenge_bytes<const N: usize>(&mut self, label: Label) -> Result<[u8; N], PatternError> {
+    fn challenge_bytes<const N: usize>(&mut self, label: Label) -> [u8; N] {
         let mut output = [0u8; N];
-        self.fill_challenge_bytes(label, &mut output)?;
-        Ok(output)
+        self.fill_challenge_bytes(label, &mut output);
+        output
     }
 }
 
@@ -51,8 +43,8 @@ pub trait BytesToUnitDeserialize {
 }
 
 pub trait BytesToUnitSerialize {
-    fn add_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError>;
-    fn message_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError>;
+    fn add_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self;
+    fn message_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self;
 }
 
 /// Methods for adding bytes to the [`DomainSeparator`](crate::DomainSeparator), properly counting group elements.

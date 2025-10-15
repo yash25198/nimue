@@ -22,7 +22,7 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_scalars(&mut self, input: &[F]) -> Result<&mut Self, PatternError> {
+    fn add_scalars(&mut self, input: &[F]) -> &mut Self {
         // Serialize to bytes - pre-allocate with estimated capacity
         // Typical compressed field element is 32 bytes
         let mut buf = Vec::with_capacity(input.len() * 32);
@@ -32,9 +32,7 @@ where
         }
 
         // Add bytes directly - this matches the pattern's inner message_bytes call
-        self.message_bytes(Label::BaseFieldCoefficients, &buf)?;
-
-        Ok(self)
+        self.message_bytes(Label::BaseFieldCoefficients, &buf)
     }
 }
 
@@ -44,7 +42,7 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_points(&mut self, input: &[G]) -> Result<&mut Self, PatternError> {
+    fn add_points(&mut self, input: &[G]) -> &mut Self {
         // Serialize to bytes - pre-allocate with estimated capacity
         // Typical compressed point is 32-48 bytes depending on curve
         let mut buf = Vec::with_capacity(input.len() * 48);
@@ -55,9 +53,7 @@ where
 
         // Add bytes directly - this matches the pattern's inner message_bytes call
         // The pattern system expects this to use SerializedGroup label
-        self.message_bytes(Label::SerializedGroup, &buf)?;
-
-        Ok(self)
+        self.message_bytes(Label::SerializedGroup, &buf)
     }
 }
 
@@ -76,7 +72,7 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.public_bytes(Label::Public, &buf)?;
+        self.public_bytes(Label::Public, &buf);
         Ok(buf)
     }
 }
@@ -96,7 +92,7 @@ where
             i.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.public_bytes(label, &buf)?;
+        self.public_bytes(label, &buf);
         Ok(buf)
     }
 }
@@ -112,7 +108,7 @@ where
     H: DuplexSpongeInterface<Fp<C, N>>,
     R: RngCore + CryptoRng,
 {
-    fn add_scalars(&mut self, input: &[F]) -> Result<&mut Self, PatternError> {
+    fn add_scalars(&mut self, input: &[F]) -> &mut Self {
         // Flatten to base field elements
         let flattened: Vec<_> = input
             .iter()
@@ -120,9 +116,7 @@ where
             .collect();
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::BaseFieldCoefficients, &flattened)?;
-
-        Ok(self)
+        self.add_units(Label::BaseFieldCoefficients, &flattened)
     }
 }
 
@@ -138,10 +132,7 @@ where
     R: RngCore + CryptoRng,
     C: FpConfig<N>,
 {
-    fn add_points(
-        &mut self,
-        input: &[ark_ec::short_weierstrass::Projective<P>],
-    ) -> Result<&mut Self, PatternError> {
+    fn add_points(&mut self, input: &[ark_ec::short_weierstrass::Projective<P>]) -> &mut Self {
         // Extract SerializedGroup
         let mut coords = Vec::with_capacity(input.len() * 2);
         for point in input {
@@ -152,9 +143,7 @@ where
         }
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::SerializedGroup, &coords)?;
-
-        Ok(self)
+        self.add_units(Label::SerializedGroup, &coords)
     }
 }
 
@@ -170,10 +159,7 @@ where
     R: RngCore + CryptoRng,
     C: FpConfig<N>,
 {
-    fn add_points(
-        &mut self,
-        input: &[ark_ec::twisted_edwards::Projective<P>],
-    ) -> Result<&mut Self, PatternError> {
+    fn add_points(&mut self, input: &[ark_ec::twisted_edwards::Projective<P>]) -> &mut Self {
         // Extract SerializedGroup
         let mut coords = Vec::with_capacity(input.len() * 2);
         for point in input {
@@ -184,9 +170,7 @@ where
         }
 
         // Add units directly - this matches the pattern's inner message_units call
-        self.add_units(Label::SerializedGroup, &coords)?;
-
-        Ok(self)
+        self.add_units(Label::SerializedGroup, &coords)
     }
 }
 
@@ -204,7 +188,7 @@ where
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        self.public_units(Label::Public, &flattened)?;
+        self.public_units(Label::Public, &flattened);
         Ok(())
     }
 }
@@ -235,7 +219,7 @@ where
             coords.push(x);
             coords.push(y);
         }
-        self.public_units(label, &coords)?;
+        self.public_units(label, &coords);
         Ok(())
     }
 }
@@ -266,7 +250,7 @@ where
             coords.push(x);
             coords.push(y);
         }
-        self.public_units(label, &coords)?;
+        self.public_units(label, &coords);
         Ok(())
     }
 }
@@ -277,11 +261,11 @@ where
     H: DuplexSpongeInterface<Fp<C, N>>,
     R: CryptoRng + RngCore,
 {
-    fn public_bytes(&mut self, label: Label, input: &[u8]) -> Result<&mut Self, PatternError> {
+    fn public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
         for &byte in input {
-            self.public_units(label.clone(), &[Fp::from(byte)])?;
+            self.public_units(label.clone(), &[Fp::from(byte)]);
         }
-        Ok(self)
+        self
     }
 }
 
@@ -291,22 +275,16 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn fill_challenge_scalars(
-        &mut self,
-        label: Label,
-        output: &mut [F],
-    ) -> Result<&mut Self, PatternError> {
+    fn fill_challenge_scalars(&mut self, label: Label, output: &mut [F]) -> &mut Self {
         let base_field_size = bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
         let ext_degree = F::extension_degree() as usize;
         let element_size = ext_degree * base_field_size;
         let total_bytes = output.len() * element_size;
         let mut buf = vec![0u8; total_bytes];
 
-        self.pattern
-            .begin_challenge::<F>(label.clone(), Length::Fixed(output.len()))?;
-        self.fill_challenge_bytes(Label::BaseFieldCoefficients, &mut buf)?;
-        self.pattern
-            .end_challenge::<F>(label, Length::Fixed(output.len()))?;
+        self.begin_challenge::<F>(label.clone(), output.len());
+        self.fill_challenge_bytes(Label::BaseFieldCoefficients, &mut buf);
+        self.end_challenge::<F>(label, output.len());
 
         // Convert bytes to field elements by chunking the buffer
         for (elem, chunk) in output.iter_mut().zip(buf.chunks_exact(element_size)) {
@@ -318,7 +296,7 @@ where
             .expect("Could not convert bytes to field element");
         }
 
-        Ok(self)
+        self
     }
 }
 
@@ -328,11 +306,7 @@ where
     H: DuplexSpongeInterface<Fp<C, N>>,
     R: RngCore + CryptoRng,
 {
-    fn fill_challenge_scalars(
-        &mut self,
-        label: Label,
-        output: &mut [Fp<C, N>],
-    ) -> Result<&mut Self, PatternError> {
+    fn fill_challenge_scalars(&mut self, label: Label, output: &mut [Fp<C, N>]) -> &mut Self {
         self.fill_challenge_units(label, output)
     }
 }
@@ -379,24 +353,22 @@ mod tests {
 
         // Create proper pattern with field message
         let mut pattern = PatternState::new();
-        pattern
-            .message_scalars::<BabyBear>(Label::custom("scalars"), 3)
-            .unwrap();
+        pattern.message_scalars::<BabyBear>(Label::custom("scalars"), 3);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
         // Use the extension trait for convenience
-        assert!(prover
+        assert!(!prover
             .message_scalars(Label::custom("scalars"), &scalars)
-            .is_ok());
+            .has_error());
 
         // Verify narg_string contains the serialized scalars
         let mut expected_bytes = Vec::new();
         for scalar in &scalars {
             scalar.serialize_compressed(&mut expected_bytes).unwrap();
         }
-        assert_eq!(prover.narg_string(), expected_bytes);
+        assert_eq!(prover.narg_string().unwrap(), expected_bytes);
 
         prover.finalize().unwrap();
     }
@@ -408,21 +380,19 @@ mod tests {
 
         // Create proper pattern
         let mut pattern = PatternState::new();
-        pattern
-            .message_scalars::<Fr>(Label::custom("fr_scalars"), 2)
-            .unwrap();
+        pattern.message_scalars::<Fr>(Label::custom("fr_scalars"), 2);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
-        assert!(prover
+        assert!(!prover
             .message_scalars(Label::custom("fr_scalars"), &[f0, f1])
-            .is_ok());
+            .has_error());
 
         // Verify narg_string
         let mut expected = Vec::new();
         f0.serialize_compressed(&mut expected).unwrap();
         f1.serialize_compressed(&mut expected).unwrap();
-        assert_eq!(prover.narg_string(), expected);
+        assert_eq!(prover.narg_string().unwrap(), expected);
 
         prover.finalize().unwrap();
     }
@@ -433,20 +403,18 @@ mod tests {
 
         // Create proper pattern
         let mut pattern = PatternState::new();
-        pattern
-            .message_points::<G>(Label::custom("point"), 1)
-            .unwrap();
+        pattern.message_points::<G>(Label::custom("point"), 1);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
-        assert!(prover
+        assert!(!prover
             .message_points(Label::custom("point"), &[point])
-            .is_ok());
+            .has_error());
 
         // Verify narg_string
         let mut expected = Vec::new();
         point.serialize_compressed(&mut expected).unwrap();
-        assert_eq!(prover.narg_string(), expected);
+        assert_eq!(prover.narg_string().unwrap(), expected);
 
         prover.finalize().unwrap();
     }
@@ -457,14 +425,14 @@ mod tests {
 
         // Create proper pattern
         let mut pattern = PatternState::new();
-        pattern.message_bytes(Label::Bytes, input.len()).unwrap();
+        pattern.message_bytes(Label::Bytes, input.len());
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
-        assert!(prover.message_bytes(Label::Bytes, input).is_ok());
+        assert!(!prover.message_bytes(Label::Bytes, input).has_error());
 
         // Verify narg_string
-        assert_eq!(prover.narg_string(), input);
+        assert_eq!(prover.narg_string().unwrap(), input);
 
         prover.finalize().unwrap();
     }
@@ -486,10 +454,9 @@ mod tests {
         );
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-        let result = prover.message_scalars(Label::custom("scalars"), &scalars);
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
-
-        prover.abort().unwrap();
+        let _result = prover.message_scalars(Label::custom("scalars"), &scalars);
+        assert!(prover.has_error(), "Expected error due to pattern mismatch");
+        let _ = prover.abort();
     }
 
     #[test]
@@ -504,10 +471,9 @@ mod tests {
         );
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-        let result = prover.message_points(Label::custom("point"), &[point]);
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
-
-        prover.abort().unwrap();
+        let _result = prover.message_points(Label::custom("point"), &[point]);
+        assert!(prover.has_error(), "Expected error due to pattern mismatch");
+        let _ = prover.abort();
     }
 
     #[test]
@@ -522,10 +488,9 @@ mod tests {
         );
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-        let result = prover.add_bytes(Label::Bytes, input);
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
-
-        prover.abort().unwrap();
+        prover.add_bytes(Label::Bytes, input);
+        assert!(prover.has_error(), "Expected error due to pattern mismatch");
+        let _ = prover.abort();
     }
 
     #[test]
@@ -535,16 +500,12 @@ mod tests {
 
         // Create pattern
         let mut pattern = PatternState::new();
-        pattern
-            .message_scalars::<BabyBear>(Label::custom("data"), 2)
-            .unwrap();
+        pattern.message_scalars::<BabyBear>(Label::custom("data"), 2);
         let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
         // Prover
         let mut prover = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
-        prover
-            .message_scalars(Label::custom("data"), &scalars)
-            .unwrap();
+        prover.message_scalars(Label::custom("data"), &scalars);
         let proof = prover.finalize().unwrap();
 
         // Verifier

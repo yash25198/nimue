@@ -234,7 +234,7 @@ macro_rules! define_protocol {
             R: rand::RngCore + rand::CryptoRng,
         {
             use $crate::pattern::Label;
-            state.inner_mut().add_units(Label::Units, input).expect("Failed to add units");
+            state.inner_mut().add_units(Label::Units, input);
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);

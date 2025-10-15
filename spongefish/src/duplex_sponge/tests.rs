@@ -18,11 +18,11 @@ use crate::{
 #[test]
 fn test_prover_rng_basic() {
     let mut pattern = PatternState::new();
-    pattern.message_bytes(Label::Bytes, 1).unwrap();
+    pattern.message_bytes(Label::Bytes, 1);
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut prover_state = ProverState::<Keccak>::new(pattern, rand::rngs::OsRng);
-    let rng = prover_state.rng();
+    let rng = prover_state.rng().unwrap();
 
     let mut random_bytes = [0u8; 32];
     rng.fill_bytes(&mut random_bytes);
@@ -40,44 +40,54 @@ fn test_prover_rng_basic() {
 #[test]
 fn test_prover_state_bytewriter() {
     let mut pattern = PatternState::new();
-    pattern.message_bytes(Label::Bytes, 1).unwrap();
+    pattern.message_bytes(Label::Bytes, 1);
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut prover_state = ProverState::<Keccak>::new(Arc::clone(&pattern), rand::rngs::OsRng);
-    assert!(prover_state.message_bytes(Label::Bytes, &[0u8]).is_ok());
-    assert!(prover_state.message_bytes(Label::Bytes, &[1u8]).is_err());
+    prover_state.message_bytes(Label::Bytes, &[0u8]);
+    assert!(
+        prover_state.finalize().is_ok(),
+        "First message should succeed"
+    );
+
+    let mut prover_state2 = ProverState::<Keccak>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+    prover_state2.message_bytes(Label::Bytes, &[1u8]);
+    prover_state2.message_bytes(Label::Bytes, &[2u8]); // Extra message - should cause error at finalize
+    assert!(
+        prover_state2.finalize().is_err(),
+        "Extra message should cause error"
+    );
 
     // Test public bytes (not in transcript)
     let mut pattern = PatternState::new();
-    pattern.public_bytes(Label::Public, 1).unwrap();
+    pattern.public_bytes(Label::Public, 1);
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut prover_state = ProverState::<Keccak>::new(pattern, rand::rngs::OsRng);
-    // prover_state.public_bytes(Label::Public, &[0u8]).unwrap();
-    assert!(prover_state.public_bytes(Label::Public, &[0u8]).is_ok());
-    assert_eq!(prover_state.narg_string(), b"");
+    assert!(!prover_state.public_bytes(Label::Public, &[0u8]).has_error());
+    assert_eq!(prover_state.narg_string(), Some(b"" as &[u8]));
     prover_state.finalize().unwrap();
 }
 
 #[test]
 fn test_invalid_pattern_sequence() {
     let mut pattern = PatternState::new();
-    pattern.message_bytes(Label::Bytes, 3).unwrap();
-    pattern.challenge_bytes(Label::custom("chal"), 1).unwrap();
+    pattern.message_bytes(Label::Bytes, 3);
+    pattern.challenge_bytes(Label::custom("chal"), 1);
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut verifier_state = VerifierState::<Keccak>::new(Arc::clone(&pattern), b"abc");
     // Try to squeeze before absorbing all messages
     assert!(verifier_state
         .fill_challenge_bytes(Label::custom("chal"), &mut [0u8; 1])
-        .is_err());
+        .has_error());
 }
 
 #[test]
 fn test_deterministic() {
     let mut pattern = PatternState::new();
-    pattern.message_bytes(Label::Bytes, 3).unwrap();
-    pattern.challenge_bytes(Label::custom("chal"), 16).unwrap();
+    pattern.message_bytes(Label::Bytes, 3);
+    pattern.challenge_bytes(Label::custom("chal"), 16);
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut first_verifier = VerifierState::<Keccak>::new(Arc::clone(&pattern), b"123");
@@ -96,12 +106,8 @@ fn test_deterministic() {
     let mut first_chal = [0u8; 16];
     let mut second_chal = [0u8; 16];
 
-    first_verifier
-        .fill_challenge_bytes(Label::custom("chal"), &mut first_chal)
-        .unwrap();
-    second_verifier
-        .fill_challenge_bytes(Label::custom("chal"), &mut second_chal)
-        .unwrap();
+    first_verifier.fill_challenge_bytes(Label::custom("chal"), &mut first_chal);
+    second_verifier.fill_challenge_bytes(Label::custom("chal"), &mut second_chal);
 
     assert_eq!(first_chal, second_chal);
 
@@ -112,11 +118,9 @@ fn test_deterministic() {
 #[test]
 fn test_statistics() {
     let mut pattern = PatternState::new();
-    pattern.message_bytes(Label::Bytes, 4).unwrap();
-    pattern.ratchet().unwrap();
-    pattern
-        .challenge_bytes(Label::custom("output"), 2048)
-        .unwrap();
+    pattern.message_bytes(Label::Bytes, 4);
+    pattern.ratchet();
+    pattern.challenge_bytes(Label::custom("output"), 2048);
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut verifier_state = VerifierState::<Keccak>::new(pattern, b"seed");
@@ -126,9 +130,7 @@ fn test_statistics() {
     verifier_state.ratchet().unwrap();
 
     let mut output = [0u8; 2048];
-    verifier_state
-        .fill_challenge_bytes(Label::custom("output"), &mut output)
-        .unwrap();
+    verifier_state.fill_challenge_bytes(Label::custom("output"), &mut output);
 
     let frequencies = (0u8..=255)
         .map(|i| output.iter().filter(|&&x| x == i).count())
@@ -143,7 +145,7 @@ fn test_statistics() {
 #[test]
 // fn test_transcript_readwrite() {
 //     let mut pattern = PatternState::new();
-//     pattern.message_units(Label::Units, 10).unwrap();
+//     pattern.message_units(Label::Units, 10);
 //     pattern.challenge_bytes(Label::custom("chal"), 10).unwrap();
 //     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
@@ -165,35 +167,34 @@ fn test_statistics() {
 //     verifier_state.finalize().unwrap();
 // }
 #[test]
-#[should_panic(expected = "UnexpectedInteraction")]
 fn test_incomplete_pattern() {
     let mut pattern = PatternState::new();
-    pattern.message_units(Label::Units, 10).unwrap();
-    pattern.challenge_bytes(Label::custom("chal"), 1).unwrap();
+    pattern.message_units(Label::Units, 10);
+    pattern.challenge_bytes(Label::custom("chal"), 1);
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut prover_state = ProverState::<Keccak>::new(pattern, rand::rngs::OsRng);
-    prover_state
-        .add_units(Label::Units, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-        .unwrap();
-    // Wrong size - should panic
-    prover_state
-        .fill_challenge_bytes(Label::custom("chal"), &mut [0u8; 10])
-        .unwrap();
+    prover_state.add_units(Label::Units, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // Wrong size - should store error
+    prover_state.fill_challenge_bytes(Label::custom("chal"), &mut [0u8; 10]);
+
+    // Should have error due to length mismatch
+    assert!(prover_state.has_error());
+    assert!(prover_state.finalize().is_err());
 }
 
 #[test]
 fn test_prover_empty_absorb() {
     let mut pattern = PatternState::new();
-    pattern.message_bytes(Label::Bytes, 1).unwrap();
-    pattern.challenge_bytes(Label::custom("chal"), 1).unwrap();
+    pattern.message_bytes(Label::Bytes, 1);
+    pattern.challenge_bytes(Label::custom("chal"), 1);
     let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
 
     let mut prover = ProverState::<Keccak>::new(Arc::clone(&pattern), rand::rngs::OsRng);
     // Skip the message - should fail when trying to challenge
     assert!(prover
         .fill_challenge_bytes(Label::custom("chal"), &mut [0u8; 1])
-        .is_err());
+        .has_error());
 
     let mut verifier = VerifierState::<Keccak>::new(pattern, b"");
     // Empty transcript - should fail
