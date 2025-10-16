@@ -211,7 +211,7 @@ mod tests {
             .finalize()
             .expect("Failed to finalize pattern");
 
-        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
 
         let mut out = [F::ZERO; 2];
         let result = verifier.fill_next_scalars(&mut out);
@@ -251,7 +251,7 @@ mod tests {
             .finalize()
             .expect("Failed to finalize pattern");
 
-        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
         let mut out = [G::ZERO];
         let result = verifier.fill_next_points(&mut out);
 
@@ -271,7 +271,7 @@ mod tests {
             .finalize()
             .expect("Failed to finalize pattern");
 
-        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
         let mut out = [G::ZERO];
         let result = verifier.fill_next_points(&mut out);
 
@@ -291,7 +291,7 @@ mod tests {
             .finalize()
             .expect("Failed to finalize pattern");
 
-        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
         let mut out = [G::ZERO];
         let result = verifier.fill_next_points(&mut out);
 
@@ -311,7 +311,7 @@ mod tests {
             .finalize()
             .expect("Failed to finalize pattern");
 
-        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &[]);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
         let mut out = [G::ZERO];
         let result = verifier.fill_next_points(&mut out);
 

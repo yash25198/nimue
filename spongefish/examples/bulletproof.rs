@@ -194,11 +194,10 @@ fn main() {
 
     // Create interaction pattern
     let pattern = Arc::new(bulletproof_pattern::<G>(size));
-    let pattern = Arc::new(
+    let pattern = 
         <PatternState as Clone>::clone(&pattern)
             .finalize()
-            .expect("Failed to finalize pattern"),
-    );
+            .expect("Failed to finalize pattern");
 
     // Test vectors
     let a = (0..size).map(|x| F::from(x as u32)).collect::<Vec<_>>();

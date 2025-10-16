@@ -323,11 +323,10 @@ fn main() {
     println!("✓ Random polynomial created ({} evaluations)\n", poly_size);
 
     // Step 2: Create and finalize pattern
-    let pattern = Arc::new(
+    let pattern = 
         whir_pattern(num_vars)
             .finalize()
-            .expect("Failed to finalize pattern"),
-    );
+            .expect("Failed to finalize pattern");
     println!("✓ WHIR interaction pattern created\n");
 
     // Step 3: Commit to polynomial

@@ -255,7 +255,7 @@ mod tests {
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover =
-            ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
+            ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         let _ = prover.message_scalars(Label::from("tag"), &values);
 
         // Verify narg_string
@@ -267,7 +267,7 @@ mod tests {
 
         let proof = prover.finalize().unwrap();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
 
         let _ = verifier
             .fill_message_scalars(Label::from("tag"), &mut values2);
@@ -292,7 +292,7 @@ mod tests {
         let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover =
-            ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
+            ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         let _ = prover.message_points(Label::custom("generator"), &[point]);
 
         // Verify narg_string matches expected serialization
@@ -300,7 +300,7 @@ mod tests {
 
         let proof = prover.finalize().unwrap();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
 
         let mut out = [Curve::ZERO];
         let _ = verifier
@@ -330,7 +330,7 @@ mod tests {
         // Create a pattern with a message scalar (not challenge)
         let mut pattern = PatternState::new();
         pattern.message_scalars::<BabyBear>(Label::from("tag"), 1);
-        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
 

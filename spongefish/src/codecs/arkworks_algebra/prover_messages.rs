@@ -354,9 +354,9 @@ mod tests {
         // Create proper pattern with field message
         let mut pattern = PatternState::new();
         pattern.message_scalars::<BabyBear>(Label::custom("scalars"), 3);
-        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
 
         // Use the extension trait for convenience
         assert!(!prover
@@ -381,9 +381,9 @@ mod tests {
         // Create proper pattern
         let mut pattern = PatternState::new();
         pattern.message_scalars::<Fr>(Label::custom("fr_scalars"), 2);
-        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         assert!(!prover
             .message_scalars(Label::custom("fr_scalars"), &[f0, f1])
             .has_error());
@@ -404,9 +404,9 @@ mod tests {
         // Create proper pattern
         let mut pattern = PatternState::new();
         pattern.message_points::<G>(Label::custom("point"), 1);
-        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         assert!(!prover
             .message_points(Label::custom("point"), &[point])
             .has_error());
@@ -426,9 +426,9 @@ mod tests {
         // Create proper pattern
         let mut pattern = PatternState::new();
         pattern.message_bytes(Label::Bytes, input.len());
-        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         assert!(!prover.message_bytes(Label::Bytes, input).has_error());
 
         // Verify narg_string
@@ -447,11 +447,11 @@ mod tests {
         ];
 
         // Empty pattern - should fail
-        let pattern = Arc::new(
+        let pattern = 
             PatternState::new()
                 .finalize()
-                .expect("Failed to finalize pattern"),
-        );
+                .expect("Failed to finalize pattern");
+        
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
         let _result = prover.message_scalars(Label::custom("scalars"), &scalars);
@@ -464,10 +464,10 @@ mod tests {
         let point = G::generator();
 
         // Empty pattern - should fail
-        let pattern = Arc::new(
+        let pattern =
             PatternState::new()
                 .finalize()
-                .expect("Failed to finalize pattern"),
+                .expect("Failed to finalize pattern"
         );
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
@@ -481,10 +481,10 @@ mod tests {
         let input = b"hello world!";
 
         // Empty pattern - should fail
-        let pattern = Arc::new(
+        let pattern = 
             PatternState::new()
                 .finalize()
-                .expect("Failed to finalize pattern"),
+                .expect("Failed to finalize pattern"
         );
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
@@ -501,10 +501,10 @@ mod tests {
         // Create pattern
         let mut pattern = PatternState::new();
         pattern.message_scalars::<BabyBear>(Label::custom("data"), 2);
-        let pattern = Arc::new(pattern.finalize().expect("Failed to finalize pattern"));
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
         // Prover
-        let mut prover = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         prover.message_scalars(Label::custom("data"), &scalars);
         let proof = prover.finalize().unwrap();
 

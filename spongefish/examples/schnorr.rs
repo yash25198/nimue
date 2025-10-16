@@ -126,7 +126,7 @@ fn main() {
     type G = ark_curve25519::EdwardsProjective;
 
     // Step 1: Create and finalize the interaction pattern
-    let pattern = Arc::new(schnorr_pattern::<G>());
+    let pattern = schnorr_pattern::<G>();
     println!("✓ Pattern created and finalized");
 
     // Step 2: Setup - generate keys
