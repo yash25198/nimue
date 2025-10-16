@@ -140,15 +140,17 @@ pub mod keccak;
 pub mod codecs;
 
 pub mod pattern;
+/// Prover's internal state and transcript generation.
+mod prover;
 /// Unit-tests.
 #[cfg(test)]
 mod tests;
 
-/// Prover's internal state and transcript generation.
-mod prover;
-
 /// Traits for byte support.
 pub mod traits;
+
+#[cfg(feature = "typed")]
+pub mod typed;
 
 pub use duplex_sponge::{legacy::DigestBridge, DuplexSpongeInterface, Unit};
 pub use errors::{ProofError, ProofResult};

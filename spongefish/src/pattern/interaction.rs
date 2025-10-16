@@ -1,4 +1,5 @@
 use core::{any::type_name, fmt::Display};
+use std::sync::Arc;
 
 /// A single abstract prover-verifier interaction.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -20,8 +21,67 @@ pub struct Interaction {
     length: Length,
 }
 
-/// Labels for interactions.
-pub type Label = &'static str;
+/// Labels for interactions
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum Label {
+    Bytes,
+    Units,
+    BaseFieldCoefficients,
+    SerializedGroup,
+    Public,
+    Ratchet,
+    Protocol,
+    Hint,
+
+    Custom(Arc<str>),
+}
+
+impl Label {
+    /// Create a custom label from any string-like type
+    pub fn custom(s: impl Into<Arc<str>>) -> Self {
+        Self::Custom(s.into())
+    }
+
+    /// Get the string representation
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Bytes => "bytes",
+            Self::Units => "units",
+            Self::BaseFieldCoefficients => "base-field-coefficients",
+            Self::SerializedGroup => "serialized-group",
+            Self::Public => "public",
+            Self::Ratchet => "ratchet",
+            Self::Protocol => "protocol",
+            Self::Hint => "hint",
+            Self::Custom(s) => s.as_ref(),
+        }
+    }
+}
+
+// Conversions
+impl From<String> for Label {
+    fn from(s: String) -> Self {
+        Self::Custom(Arc::from(s))
+    }
+}
+
+impl From<Arc<str>> for Label {
+    fn from(s: Arc<str>) -> Self {
+        Self::Custom(s)
+    }
+}
+
+impl From<&str> for Label {
+    fn from(s: &str) -> Self {
+        Self::Custom(Arc::from(s))
+    }
+}
+
+impl From<&String> for Label {
+    fn from(s: &String) -> Self {
+        Self::Custom(Arc::from(s.as_str()))
+    }
+}
 
 /// Kinds of prover-verifier interactions
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
@@ -85,6 +145,12 @@ impl Interaction {
         self.kind
     }
 
+    /// Returns the label of this interaction.
+    #[must_use]
+    pub const fn label(&self) -> &Label {
+        &self.label
+    }
+
     /// Returns `true` if this is a `Hierarchy::End` that closes the provided
     /// `Hierarchy::Begin`.
     #[must_use]
@@ -104,14 +170,19 @@ impl Display for Interaction {
             // Domain separator mode: stable unambiguous format.
             write!(f, "{} {}", self.hierarchy, self.kind)?;
             // Length prefixed strings for labels to disambiguate
-            write!(f, " {} {}", self.label.len(), self.label)?;
+            let label_str = self.label.as_str();
+            write!(f, " {} {}", label_str.len(), label_str)?;
             write!(f, " {}", self.length)
             // Leave out type names for domain separators.
         } else {
             write!(
                 f,
                 "{} {} {} {} {}",
-                self.hierarchy, self.kind, self.label, self.length, self.type_name,
+                self.hierarchy,
+                self.kind,
+                self.label.as_str(),
+                self.length,
+                self.type_name,
             )
         }
     }
@@ -165,7 +236,7 @@ mod tests {
         let interaction = Interaction::new::<Vec<f64>>(
             Hierarchy::Atomic,
             Kind::Message,
-            "test-message",
+            Label::custom("test-message"),
             Length::Scalar,
         );
         let result = format!("{interaction:#}");

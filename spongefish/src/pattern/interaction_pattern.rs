@@ -1,11 +1,15 @@
 use core::fmt::Display;
+use std::sync::Arc;
 
 use thiserror::Error;
 
 use super::{interaction::Hierarchy, Interaction, Kind};
 
+#[cfg(test)]
+use super::Label;
+
 /// Abstract transcript containing prover-verifier interactions
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct InteractionPattern {
     interactions: Vec<Interaction>,
 }
@@ -63,6 +67,29 @@ impl InteractionPattern {
         result.into()
     }
 
+    /// Finalize the pattern by wrapping it in an Arc.
+    ///
+    /// This method provides a convenient way to convert an InteractionPattern
+    /// into an Arc<InteractionPattern> for use with ProverState and VerifierState.
+    #[must_use]
+    pub fn finalize(self) -> Arc<Self> {
+        Arc::new(self)
+    }
+
+    /// Convert this pattern to a ProverState.
+    ///
+    /// This method provides a convenient way to create a ProverState directly
+    /// from an InteractionPattern without manually wrapping it in an Arc.
+    #[must_use]
+    pub fn to_prover_state<H, U, R>(self, rng: R) -> crate::ProverState<H, U, R>
+    where
+        U: crate::duplex_sponge::Unit,
+        H: crate::duplex_sponge::DuplexSpongeInterface<U>,
+        R: rand::RngCore + rand::CryptoRng,
+    {
+        crate::ProverState::new(self, rng)
+    }
+
     /// Validate the transcript.
     ///
     /// A valid transcript has:
@@ -117,6 +144,13 @@ impl InteractionPattern {
     }
 }
 
+impl std::fmt::Debug for InteractionPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Use the Display implementation which shows the hierarchy cleanly
+        write!(f, "{}", self)
+    }
+}
+
 /// Creates a human readable representation of the transcript.
 ///
 /// When called in alternate mode `{:#}` it will be a stable format suitable as domain separator.
@@ -162,14 +196,24 @@ mod tests {
     #[test]
     fn test_domain_separator() {
         let transcript = InteractionPattern::new(vec![
-            Interaction::new::<usize>(Hierarchy::Begin, Kind::Protocol, "test", Length::None),
+            Interaction::new::<usize>(
+                Hierarchy::Begin,
+                Kind::Protocol,
+                Label::custom("test"),
+                Length::None,
+            ),
             Interaction::new::<Vec<f64>>(
                 Hierarchy::Atomic,
                 Kind::Message,
-                "test-message",
+                Label::custom("test-message"),
                 Length::Scalar,
             ),
-            Interaction::new::<usize>(Hierarchy::End, Kind::Protocol, "test", Length::None),
+            Interaction::new::<usize>(
+                Hierarchy::End,
+                Kind::Protocol,
+                Label::custom("test"),
+                Length::None,
+            ),
         ])
         .unwrap();
 

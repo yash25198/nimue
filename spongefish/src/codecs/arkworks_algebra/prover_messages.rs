@@ -1,37 +1,38 @@
-use ark_ec::CurveGroup;
-use ark_ff::{Field, Fp, FpConfig};
-use ark_serialize::CanonicalSerialize;
+use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::{Field, Fp, FpConfig, PrimeField};
 use rand::{CryptoRng, RngCore};
 
-use super::{CommonFieldToUnit, CommonGroupToUnit, FieldToUnitSerialize, GroupToUnitSerialize};
+use super::{
+    CommonFieldToUnit, CommonGroupToUnit, FieldToUnitSerialize, GroupToUnitSerialize, UnitToBytes,
+    UnitToField,
+};
 use crate::{
-    BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, DuplexSpongeInterface,
-    ProofResult, ProverState, Unit, UnitTranscript, VerifierState,
+    codecs::bytes_uniform_modp,
+    pattern::{Label, Length, Pattern, PatternError},
+    BytesToUnitSerialize, CommonUnitToBytes, DuplexSpongeInterface, ProverState, UnitTranscript,
 };
 
-impl<F: Field, H: DuplexSpongeInterface, R: RngCore + CryptoRng> FieldToUnitSerialize<F>
-    for ProverState<H, u8, R>
-{
-    fn add_scalars(&mut self, input: &[F]) {
-        let serialized = self.public_scalars(input);
-        self.narg_string.extend(serialized);
-    }
-}
+// ============================================================================
+// PROVER IMPLEMENTATIONS FOR u8 (unit-basedoperations)
+// ============================================================================
 
-impl<
-        C: FpConfig<N>,
-        H: DuplexSpongeInterface<Fp<C, N>>,
-        R: RngCore + CryptoRng,
-        const N: usize,
-    > FieldToUnitSerialize<Fp<C, N>> for ProverState<H, Fp<C, N>, R>
+impl<F, H, R> FieldToUnitSerialize<F> for ProverState<H, u8, R>
+where
+    F: Field,
+    H: DuplexSpongeInterface,
+    R: RngCore + CryptoRng,
 {
-    fn add_scalars(&mut self, input: &[Fp<C, N>]) {
-        self.public_units(input);
-        for i in input {
-            // Serialization should be infallible.
-            i.serialize_compressed(&mut self.narg_string)
+    fn add_scalars(&mut self, input: &[F]) -> &mut Self {
+        // Serialize to bytes - pre-allocate with estimated capacity
+        // Typical compressed field element is 32 bytes
+        let mut buf = Vec::with_capacity(input.len() * 32);
+        for f in input {
+            f.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
+
+        // Add bytes directly - this matches the pattern's inner message_bytes call
+        self.message_bytes(Label::BaseFieldCoefficients, &buf)
     }
 }
 
@@ -40,224 +41,480 @@ where
     G: CurveGroup,
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
-    Self: CommonGroupToUnit<G, Repr = Vec<u8>>,
 {
-    fn add_points(&mut self, input: &[G]) {
-        let serialized = self.public_points(input);
-        self.narg_string.extend(serialized);
-    }
-}
-
-impl<G, H, R, C: FpConfig<N>, C2: FpConfig<N>, const N: usize> GroupToUnitSerialize<G>
-    for ProverState<H, Fp<C, N>, R>
-where
-    G: CurveGroup<BaseField = Fp<C2, N>>,
-    H: DuplexSpongeInterface<Fp<C, N>>,
-    R: RngCore + CryptoRng,
-    Self: CommonGroupToUnit<G> + FieldToUnitSerialize<G::BaseField>,
-{
-    fn add_points(&mut self, input: &[G]) {
-        self.public_points(input);
-        for i in input {
-            i.serialize_compressed(&mut self.narg_string)
+    fn add_points(&mut self, input: &[G]) -> &mut Self {
+        // Serialize to bytes - pre-allocate with estimated capacity
+        // Typical compressed point is 32-48 bytes depending on curve
+        let mut buf = Vec::with_capacity(input.len() * 48);
+        for p in input {
+            p.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
+
+        // Add bytes directly - this matches the pattern's inner message_bytes call
+        // The pattern system expects this to use SerializedGroup label
+        self.message_bytes(Label::SerializedGroup, &buf)
     }
 }
 
-impl<H, R, C, const N: usize> BytesToUnitSerialize for ProverState<H, Fp<C, N>, R>
+impl<F, H, R> CommonFieldToUnit<F> for ProverState<H, u8, R>
 where
-    H: DuplexSpongeInterface<Fp<C, N>>,
-    C: FpConfig<N>,
+    F: Field,
+    H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_bytes(&mut self, input: &[u8]) {
-        self.public_bytes(input);
-        self.narg_string.extend(input);
+    type Repr = Vec<u8>;
+
+    fn public_scalars(&mut self, input: &[F]) -> Result<Self::Repr, PatternError> {
+        // Pre-allocate with estimated capacity (typical field element is 32 bytes)
+        let mut buf = Vec::with_capacity(input.len() * 32);
+        for i in input {
+            i.serialize_compressed(&mut buf)
+                .expect("Serialization failed");
+        }
+        self.public_bytes(Label::Public, &buf);
+        Ok(buf)
     }
 }
 
-impl<H, C, const N: usize> BytesToUnitDeserialize for VerifierState<'_, H, Fp<C, N>>
+impl<G, H, R> CommonGroupToUnit<G> for ProverState<H, u8, R>
 where
+    G: CurveGroup,
+    H: DuplexSpongeInterface,
+    R: RngCore + CryptoRng,
+{
+    type Repr = Vec<u8>;
+
+    fn public_points(&mut self, label: Label, input: &[G]) -> Result<Self::Repr, PatternError> {
+        // Pre-allocate with estimated capacity (typical point is 32 bytes)
+        let mut buf = Vec::with_capacity(input.len() * 32);
+        for i in input {
+            i.serialize_compressed(&mut buf)
+                .expect("Serialization failed");
+        }
+        self.public_bytes(label, &buf);
+        Ok(buf)
+    }
+}
+
+// ============================================================================
+// PROVER IMPLEMENTATIONS FOR Fp<C, N> (field-native operations)
+// ============================================================================
+
+impl<F, C, H, R, const N: usize> FieldToUnitSerialize<F> for ProverState<H, Fp<C, N>, R>
+where
+    F: Field<BasePrimeField = Fp<C, N>>,
+    C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
+    R: RngCore + CryptoRng,
+{
+    fn add_scalars(&mut self, input: &[F]) -> &mut Self {
+        // Flatten to base field elements
+        let flattened: Vec<_> = input
+            .iter()
+            .flat_map(Field::to_base_prime_field_elements)
+            .collect();
+
+        // Add units directly - this matches the pattern's inner message_units call
+        self.add_units(Label::BaseFieldCoefficients, &flattened)
+    }
+}
+
+// ============================================================================
+// SHORT WEIERSTRASS CURVE IMPLEMENTATION
+// ============================================================================
+
+impl<P, H, R, C, const N: usize> GroupToUnitSerialize<ark_ec::short_weierstrass::Projective<P>>
+    for ProverState<H, Fp<C, N>, R>
+where
+    P: ark_ec::short_weierstrass::SWCurveConfig<BaseField = Fp<C, N>>,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+    R: RngCore + CryptoRng,
     C: FpConfig<N>,
 {
-    fn fill_next_bytes(&mut self, input: &mut [u8]) -> Result<(), std::io::Error> {
-        u8::read(&mut self.narg_string, input)?;
-        self.public_bytes(input);
+    fn add_points(&mut self, input: &[ark_ec::short_weierstrass::Projective<P>]) -> &mut Self {
+        // Extract SerializedGroup
+        let mut coords = Vec::with_capacity(input.len() * 2);
+        for point in input {
+            let affine = point.into_affine();
+            let (x, y) = affine.xy().unwrap();
+            coords.push(x);
+            coords.push(y);
+        }
+
+        // Add units directly - this matches the pattern's inner message_units call
+        self.add_units(Label::SerializedGroup, &coords)
+    }
+}
+
+// ============================================================================
+// TWISTED EDWARDS CURVE IMPLEMENTATION
+// ============================================================================
+
+impl<P, H, R, C, const N: usize> GroupToUnitSerialize<ark_ec::twisted_edwards::Projective<P>>
+    for ProverState<H, Fp<C, N>, R>
+where
+    P: ark_ec::twisted_edwards::TECurveConfig<BaseField = Fp<C, N>>,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+    R: RngCore + CryptoRng,
+    C: FpConfig<N>,
+{
+    fn add_points(&mut self, input: &[ark_ec::twisted_edwards::Projective<P>]) -> &mut Self {
+        // Extract SerializedGroup
+        let mut coords = Vec::with_capacity(input.len() * 2);
+        for point in input {
+            let affine = point.into_affine();
+            let (x, y) = affine.xy().unwrap();
+            coords.push(x);
+            coords.push(y);
+        }
+
+        // Add units directly - this matches the pattern's inner message_units call
+        self.add_units(Label::SerializedGroup, &coords)
+    }
+}
+
+impl<F, H, R, C, const N: usize> CommonFieldToUnit<F> for ProverState<H, Fp<C, N>, R>
+where
+    F: Field<BasePrimeField = Fp<C, N>>,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+    R: RngCore + CryptoRng,
+    C: FpConfig<N>,
+{
+    type Repr = ();
+
+    fn public_scalars(&mut self, input: &[F]) -> Result<Self::Repr, PatternError> {
+        let flattened: Vec<_> = input
+            .iter()
+            .flat_map(Field::to_base_prime_field_elements)
+            .collect();
+        self.public_units(Label::Public, &flattened);
         Ok(())
     }
 }
 
+// ============================================================================
+// SHORT WEIERSTRASS CURVE - COMMON IMPLEMENTATION FOR Fp<C, N>
+// ============================================================================
+
+impl<P, H, R, C, const N: usize> CommonGroupToUnit<ark_ec::short_weierstrass::Projective<P>>
+    for ProverState<H, Fp<C, N>, R>
+where
+    P: ark_ec::short_weierstrass::SWCurveConfig<BaseField = Fp<C, N>>,
+    C: FpConfig<N>,
+    R: RngCore + CryptoRng,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+{
+    type Repr = ();
+
+    fn public_points(
+        &mut self,
+        label: Label,
+        input: &[ark_ec::short_weierstrass::Projective<P>],
+    ) -> Result<Self::Repr, PatternError> {
+        let mut coords = Vec::with_capacity(input.len() * 2);
+        for point in input {
+            let affine = point.into_affine();
+            let (x, y) = affine.xy().unwrap();
+            coords.push(x);
+            coords.push(y);
+        }
+        self.public_units(label, &coords);
+        Ok(())
+    }
+}
+
+// ============================================================================
+// TWISTED EDWARDS CURVE - COMMON IMPLEMENTATION FOR Fp<C, N>
+// ============================================================================
+
+impl<P, H, R, C, const N: usize> CommonGroupToUnit<ark_ec::twisted_edwards::Projective<P>>
+    for ProverState<H, Fp<C, N>, R>
+where
+    P: ark_ec::twisted_edwards::TECurveConfig<BaseField = Fp<C, N>>,
+    C: FpConfig<N>,
+    R: RngCore + CryptoRng,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+{
+    type Repr = ();
+
+    fn public_points(
+        &mut self,
+        label: Label,
+        input: &[ark_ec::twisted_edwards::Projective<P>],
+    ) -> Result<Self::Repr, PatternError> {
+        let mut coords = Vec::with_capacity(input.len() * 2);
+        for point in input {
+            let affine = point.into_affine();
+            let (x, y) = affine.xy().unwrap();
+            coords.push(x);
+            coords.push(y);
+        }
+        self.public_units(label, &coords);
+        Ok(())
+    }
+}
+
+impl<H, R, C, const N: usize> CommonUnitToBytes for ProverState<H, Fp<C, N>, R>
+where
+    C: FpConfig<N>,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+    R: CryptoRng + RngCore,
+{
+    fn public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
+        for &byte in input {
+            self.public_units(label.clone(), &[Fp::from(byte)]);
+        }
+        self
+    }
+}
+
+impl<F, H, R> UnitToField<F> for ProverState<H, u8, R>
+where
+    F: Field,
+    H: DuplexSpongeInterface,
+    R: RngCore + CryptoRng,
+{
+    fn fill_challenge_scalars(&mut self, label: Label, output: &mut [F]) -> &mut Self {
+        let base_field_size = bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
+        let ext_degree = F::extension_degree() as usize;
+        let element_size = ext_degree * base_field_size;
+        let total_bytes = output.len() * element_size;
+        let mut buf = vec![0u8; total_bytes];
+
+        self.begin_challenge::<F>(label.clone(), output.len());
+        self.fill_challenge_bytes(Label::BaseFieldCoefficients, &mut buf);
+        self.end_challenge::<F>(label, output.len());
+
+        // Convert bytes to field elements by chunking the buffer
+        for (elem, chunk) in output.iter_mut().zip(buf.chunks_exact(element_size)) {
+            *elem = F::from_base_prime_field_elems(
+                chunk
+                    .chunks_exact(base_field_size)
+                    .map(F::BasePrimeField::from_be_bytes_mod_order),
+            )
+            .expect("Could not convert bytes to field element");
+        }
+
+        self
+    }
+}
+
+impl<H, R, C, const N: usize> UnitToField<Fp<C, N>> for ProverState<H, Fp<C, N>, R>
+where
+    C: FpConfig<N>,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+    R: RngCore + CryptoRng,
+{
+    fn fill_challenge_scalars(&mut self, label: Label, output: &mut [Fp<C, N>]) -> &mut Self {
+        self.fill_challenge_units(label, output)
+    }
+}
 #[cfg(test)]
-#[cfg(feature = "disable")]
 mod tests {
+    use std::sync::Arc;
+
     use ark_bls12_381::Fr;
     use ark_curve25519::EdwardsProjective;
     use ark_ec::PrimeGroup;
     use ark_ff::{Fp64, MontBackend, MontConfig, UniformRand};
+    use ark_serialize::CanonicalSerialize;
 
     use super::*;
     use crate::{
-        codecs::arkworks_algebra::{FieldPattern, FieldToUnitSerialize, GroupPattern},
-        ByteDomainSeparator, DefaultHash,
+        codecs::{
+            arkworks_algebra::{
+                FieldPattern, GroupPattern, ProverFieldMessageExt, ProverGroupMessageExt,
+                VerifierFieldMessageExt,
+            },
+            bytes::Pattern as BytesPattern,
+        },
+        pattern::PatternState,
+        DefaultHash, ProverState, VerifierState,
     };
 
-    /// Curve used for tests
     type G = EdwardsProjective;
 
-    /// Configuration for the BabyBear field (modulus = 2^31 - 2^27 + 1, generator = 21).
     #[derive(MontConfig)]
     #[modulus = "2013265921"]
     #[generator = "21"]
     pub struct BabybearConfig;
 
-    /// Base field type using the BabyBear configuration.
     pub type BabyBear = Fp64<MontBackend<BabybearConfig, 1>>;
 
     #[test]
-    fn test_add_scalars() {
-        // Create a domain separator with a fixed domain label
-        let domsep = DomainSeparator::new("test");
-
-        // Append an "absorb scalars" tag to the transcript:
-        // - BabyBear has 31-bit modulus ⇒ bytes_modp(31) = 4
-        // - 3 scalars * 4 bytes = 12 ⇒ "\0A12com" is added
-        let domsep =
-            <DomainSeparator as FieldDomainSeparator<BabyBear>>::add_scalars(domsep, 3, "com");
-
-        // Create the prover state from the domain separator
-        let mut prover_state = domsep.to_prover_state();
-
-        // Sample 3 random BabyBear field elements to simulate public input
+    fn test_add_scalars_with_proper_pattern() {
         let mut rng = ark_std::test_rng();
-        let (f0, f1, f2) = (
+        let scalars = [
             BabyBear::rand(&mut rng),
             BabyBear::rand(&mut rng),
             BabyBear::rand(&mut rng),
-        );
+        ];
 
-        // Add the scalars to the prover's transcript using the serialize logic
-        prover_state.add_scalars(&[f0, f1, f2]).unwrap();
+        // Create proper pattern with field message
+        let mut pattern = PatternState::new();
+        pattern.message_scalars::<BabyBear>(Label::custom("scalars"), 3);
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        // Serialize the scalars independently to verify `narg_string` content
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+
+        // Use the extension trait for convenience
+        assert!(!prover
+            .message_scalars(Label::custom("scalars"), &scalars)
+            .has_error());
+
+        // Verify narg_string contains the serialized scalars
         let mut expected_bytes = Vec::new();
-        f0.serialize_compressed(&mut expected_bytes).unwrap();
-        f1.serialize_compressed(&mut expected_bytes).unwrap();
-        f2.serialize_compressed(&mut expected_bytes).unwrap();
+        for scalar in &scalars {
+            scalar.serialize_compressed(&mut expected_bytes).unwrap();
+        }
+        assert_eq!(prover.narg_string().unwrap(), expected_bytes);
 
-        // The `narg_string` in the prover must match the manually serialized data
-        assert_eq!(
-            prover_state.narg_string, expected_bytes,
-            "Transcript serialization mismatch"
-        );
-
-        // Repeat with a new prover and same domain separator to test determinism
-        let mut prover_state2 = domsep.to_prover_state();
-        prover_state2.add_scalars(&[f0, f1, f2]).unwrap();
-        assert_eq!(
-            prover_state.narg_string, prover_state2.narg_string,
-            "Transcript encoding should be deterministic for same inputs"
-        );
+        prover.finalize().unwrap();
     }
 
     #[test]
     fn test_add_scalars_u8_unit() {
-        // Construct a domain separator that absorbs 2 field elements
-        let domsep = DomainSeparator::new("test-add-scalars-u8");
-        let domsep = <DomainSeparator as FieldDomainSeparator<Fr>>::add_scalars(domsep, 2, "com");
-
-        // Create prover state from domain separator
-        let mut prover = domsep.to_prover_state();
-
-        // Use two deterministic values for test
         let f0 = Fr::from(5u64);
         let f1 = Fr::from(42u64);
 
-        // Add the scalars to the prover's transcript
-        prover.add_scalars(&[f0, f1]).unwrap();
+        // Create proper pattern
+        let mut pattern = PatternState::new();
+        pattern.message_scalars::<Fr>(Label::custom("fr_scalars"), 2);
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        // Serialize the expected bytes directly
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+        assert!(!prover
+            .message_scalars(Label::custom("fr_scalars"), &[f0, f1])
+            .has_error());
+
+        // Verify narg_string
         let mut expected = Vec::new();
         f0.serialize_compressed(&mut expected).unwrap();
         f1.serialize_compressed(&mut expected).unwrap();
+        assert_eq!(prover.narg_string().unwrap(), expected);
 
-        // Assert transcript encoding is correct
-        assert_eq!(prover.narg_string, expected);
+        prover.finalize().unwrap();
     }
 
     #[test]
     fn test_add_points_u8_unit() {
-        // Use ark_curve25519 curve (compressed point = 32 bytes)
-        let domsep = <DomainSeparator as GroupDomainSeparator<G>>::add_points(
-            DomainSeparator::new("curve25519"),
-            1,
-            "pt",
-        );
-
-        let mut prover = domsep.to_prover_state();
         let point = G::generator();
 
-        // Add the point to the prover's transcript
-        prover.add_points(&[point]).unwrap();
+        // Create proper pattern
+        let mut pattern = PatternState::new();
+        pattern.message_points::<G>(Label::custom("point"), 1);
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        assert!(!prover.narg_string.is_empty());
-    }
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+        assert!(!prover
+            .message_points(Label::custom("point"), &[point])
+            .has_error());
 
-    #[test]
-    fn test_add_points_fp_unit() {
-        let domsep = <DomainSeparator as GroupDomainSeparator<G>>::add_points(
-            DomainSeparator::new("curve-bb"),
-            1,
-            "pt",
-        );
-
-        let mut prover = domsep.to_prover_state();
-        let point = G::generator();
-
-        // This triggers `GroupToUnitSerialize<G> for ProverState<H, Fp<C, N>, R>`
-        prover.add_points(&[point]).unwrap();
-
-        // Expect compressed x/y coordinates in `narg_string`
+        // Verify narg_string
         let mut expected = Vec::new();
         point.serialize_compressed(&mut expected).unwrap();
-        assert_eq!(prover.narg_string, expected);
+        assert_eq!(prover.narg_string().unwrap(), expected);
+
+        prover.finalize().unwrap();
     }
 
     #[test]
-    fn test_add_bytes_fp_unit() {
+    fn test_add_bytes_with_pattern() {
         let input = b"hello world!";
 
-        // Domain separator that expects 12 bytes to be absorbed
-        let domsep: DomainSeparator<DefaultHash, u8> = DomainSeparator::new("test-add-bytes-fp");
-        let domsep = domsep.add_bytes(12, "com");
+        // Create proper pattern
+        let mut pattern = PatternState::new();
+        pattern.message_bytes(Label::Bytes, input.len());
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
 
-        let mut prover = domsep.to_prover_state();
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+        assert!(!prover.message_bytes(Label::Bytes, input).has_error());
 
-        // Add the bytes to the prover's transcript
-        prover.add_bytes(input).unwrap();
+        // Verify narg_string
+        assert_eq!(prover.narg_string().unwrap(), input);
 
-        // The bytes should be directly copied into the transcript `narg_string`
-        assert_eq!(prover.narg_string, input);
+        prover.finalize().unwrap();
     }
 
     #[test]
-    fn test_fill_next_bytes_fp_unit() {
-        let input = b"secret-msg";
+    fn test_add_scalars_pattern_mismatch() {
+        let mut rng = ark_std::test_rng();
+        let scalars = [
+            BabyBear::rand(&mut rng),
+            BabyBear::rand(&mut rng),
+            BabyBear::rand(&mut rng),
+        ];
 
-        // Set up prover to absorb input bytes and record them in narg_string
-        let domsep: DomainSeparator<DefaultHash, u8> = DomainSeparator::new("read-bytes");
-        let domsep = domsep.add_bytes(input.len(), "msg");
-        let mut prover = domsep.to_prover_state();
-        prover.add_bytes(input).unwrap();
+        // Empty pattern - should fail
+        let pattern = 
+            PatternState::new()
+                .finalize()
+                .expect("Failed to finalize pattern");
+        
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-        // Reconstruct verifier state from same domain + transcript
-        let mut verifier = domsep.to_verifier_state(&prover.narg_string);
+        let _result = prover.message_scalars(Label::custom("scalars"), &scalars);
+        assert!(prover.has_error(), "Expected error due to pattern mismatch");
+        let _ = prover.abort();
+    }
 
-        // Read the bytes from the verifier state
-        let mut buf = [0u8; 10];
-        verifier.fill_next_bytes(&mut buf).unwrap();
+    #[test]
+    fn test_add_points_pattern_mismatch() {
+        let point = G::generator();
 
-        assert_eq!(buf, *input);
+        // Empty pattern - should fail
+        let pattern =
+            PatternState::new()
+                .finalize()
+                .expect("Failed to finalize pattern"
+        );
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+
+        let _result = prover.message_points(Label::custom("point"), &[point]);
+        assert!(prover.has_error(), "Expected error due to pattern mismatch");
+        let _ = prover.abort();
+    }
+
+    #[test]
+    fn test_add_bytes_pattern_mismatch() {
+        let input = b"hello world!";
+
+        // Empty pattern - should fail
+        let pattern = 
+            PatternState::new()
+                .finalize()
+                .expect("Failed to finalize pattern"
+        );
+        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+
+        prover.add_bytes(Label::Bytes, input);
+        assert!(prover.has_error(), "Expected error due to pattern mismatch");
+        let _ = prover.abort();
+    }
+
+    #[test]
+    fn test_roundtrip_with_verifier() {
+        let mut rng = ark_std::test_rng();
+        let scalars = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
+
+        // Create pattern
+        let mut pattern = PatternState::new();
+        pattern.message_scalars::<BabyBear>(Label::custom("data"), 2);
+        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+
+        // Prover
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+        prover.message_scalars(Label::custom("data"), &scalars);
+        let proof = prover.finalize().unwrap();
+
+        // Verifier
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
+        let mut received = [BabyBear::from(0u64); 2];
+        verifier
+            .fill_message_scalars(Label::custom("data"), &mut received);
+
+        assert_eq!(scalars, received);
+        verifier.finalize().unwrap();
     }
 }

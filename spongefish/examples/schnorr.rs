@@ -1,193 +1,196 @@
-/// Example: simple Schnorr proofs.
+// examples/schnorr_example.rs
+
+use std::sync::Arc;
+
+/// Example: Simple Schnorr proofs using Spongefish
 ///
-/// Schnorr proofs allow to prove knowledge of a secret key over a group $\mathbb{G}$ of prime order $p$ where the discrete logarithm problem is hard. In `spongefish`, we play with 3 data structures:
+/// Schnorr proofs prove knowledge of a secret key over a group G of prime order p
+/// where the discrete logarithm problem is hard.
 ///
-/// 1. `spongefish::DomainSeparator``
-/// The DomainSeparator describes the protocol.
-/// In the case of Schnorr proofs we have also some public information (the generator $P$ and the public key $X$).
-/// The protocol, roughly speaking is:
-///
-/// - P -> V: K, a commitment (point)
-/// - V -> P: c, a challenge (scalar)
-/// - P -> V: r, a response (scalar)
-///
-/// 2. `spongefish::ProverState`, describes the prover state. It contains the transcript, but not only:
-/// it also provides a CSPRNG and a reliable way of serializing elements into a proof, so that the prover does not have to worry about them.
-/// It can be instantiated via `DomainSeparator::to_prover_state()`.
-///
-/// 3. `spongefish::VerifierState`, describes the verifier state.
-/// It internally will read the transcript, and deserialize elements as requested making sure that they match with the domain separator.
-/// It can be used to verify a proof.
+/// Protocol flow:
+/// 1. Setup: Define interaction pattern
+/// 2. P → V: Statement (generator G, public key X)
+/// 3. P → V: K (commitment - a group element)
+/// 4. V → P: c (challenge - a scalar, generated from transcript)
+/// 5. P → V: r (response - a scalar)
+/// 6. V: Check P * r == K + X * c
 use ark_ec::{CurveGroup, PrimeGroup};
 use ark_std::UniformRand;
 use rand::rngs::OsRng;
-use spongefish::codecs::arkworks_algebra::{
-    CommonGroupToUnit, DomainSeparator, DuplexSpongeInterface, FieldDomainSeparator,
-    FieldToUnitDeserialize, FieldToUnitSerialize, GroupDomainSeparator, GroupToUnitDeserialize,
-    GroupToUnitSerialize, ProofError, ProofResult, ProverState, UnitToField, VerifierState,
+use spongefish::{
+    codecs::arkworks_algebra::{
+        FieldPattern,
+        GroupPattern,
+        // Extension traits for ergonomic API
+        ProverFieldMessageExt,
+        ProverGroupMessageExt,
+        UnitToField,
+        VerifierFieldMessageExt,
+        VerifierGroupMessageExt,
+    },
+    codecs::unit::Pattern as _,
+    pattern::{InteractionPattern, Label, PatternState},
+    DefaultHash, ProofError, ProofResult, ProverState, VerifierState,
 };
 
-/// Extend the domain separator with the Schnorr protocol.
-trait SchnorrDomainSeparator<G: CurveGroup> {
-    /// Shortcut: create a new schnorr proof with statement + proof.
-    fn new_schnorr_proof(domsep: &str) -> Self;
+/// Create the interaction pattern for Schnorr protocol
+fn schnorr_pattern<G: CurveGroup>() -> InteractionPattern {
+    let mut pattern = PatternState::new();
+    pattern
+        .message_points::<G>(Label::from("generator"), 1)
+        .message_points::<G>(Label::from("public_key"), 1)
+        .ratchet()
+        .message_points::<G>(Label::from("commitment"), 1)
+        .challenge_scalars::<G::ScalarField>(Label::from("challenge"), 1)
+        .message_scalars::<G::ScalarField>(Label::from("response"), 1);
 
-    /// Add the statement of the Schnorr proof
-    fn add_schnorr_statement(self) -> Self;
-    /// Add the Schnorr protocol to the domain separator.
-    fn add_schnorr_domsep(self) -> Self;
+    pattern.finalize().expect("Failed to finalize pattern")
 }
 
-impl<G, H> SchnorrDomainSeparator<G> for DomainSeparator<H>
-where
-    G: CurveGroup,
-    H: DuplexSpongeInterface,
-    Self: GroupDomainSeparator<G> + FieldDomainSeparator<G::ScalarField>,
-{
-    fn new_schnorr_proof(domsep: &str) -> Self {
-        Self::new(domsep)
-            .add_schnorr_statement()
-            .add_schnorr_domsep()
-    }
-
-    fn add_schnorr_statement(self) -> Self {
-        self.add_points(1, "generator (P)")
-            .add_points(1, "public key (X)")
-            .ratchet()
-    }
-
-    fn add_schnorr_domsep(self) -> Self {
-        self.add_points(1, "commitment (K)")
-            .challenge_scalars(1, "challenge (c)")
-            .add_scalars(1, "response (r)")
-    }
-}
-
-/// The key generation algorithm otuputs
-/// a secret key `sk` in $\mathbb{Z}_p$
-/// and its respective public key `pk` in $\mathbb{G}$.
-fn keygen<G: CurveGroup>() -> (G::ScalarField, G) {
+/// Key generation: returns (secret_key, public_key)
+fn keygen<G: PrimeGroup>() -> (G::ScalarField, G) {
     let sk = G::ScalarField::rand(&mut OsRng);
     let pk = G::generator() * sk;
     (sk, pk)
 }
 
-/// The prove algorithm takes as input
-/// - the prover state `ProverState`, that has access to a random oracle `H` and can absorb/squeeze elements from the group `G`.
-/// - The generator `P` in the group.
-/// - the secret key $x \in \mathbb{Z}_p$
-/// It returns a zero-knowledge proof of knowledge of `x` as a sequence of bytes.
+/// Schnorr proof generation
 #[allow(non_snake_case)]
-fn prove<H, G>(
-    // the hash function `H` works over bytes.
-    // Algebraic hashes over a particular domain can be denoted with an additional type argument implementing `spongefish::Unit`.
-    prover_state: &mut ProverState<H>,
-    // the generator
+fn prove<G, R>(
+    prover: &mut ProverState<DefaultHash, u8, R>,
     P: G,
-    // the secret key
     x: G::ScalarField,
-) -> ProofResult<&[u8]>
-where
-    H: DuplexSpongeInterface,
-    G: CurveGroup,
-    ProverState<H>: GroupToUnitSerialize<G> + UnitToField<G::ScalarField>,
-{
-    // `ProverState` types implement a cryptographically-secure random number generator that is tied to the protocol transcript
-    // and that can be accessed via the `rng()` function.
-    let k = G::ScalarField::rand(prover_state.rng());
-    let K = P * k;
-
-    // Add a sequence of points to the protocol transcript.
-    // An error is returned in case of failed serialization, or inconsistencies with the domain separator provided (see below).
-    prover_state.add_points(&[K])?;
-
-    // Fetch a challenge from the current transcript state.
-    let [c] = prover_state.challenge_scalars()?;
-
-    let r = k + c * x;
-    // Add a sequence of scalar elements to the protocol transcript.
-    prover_state.add_scalars(&[r])?;
-
-    // Output the current protocol transcript as a sequence of bytes.
-    Ok(prover_state.narg_string())
-}
-
-/// The verify algorithm takes as input
-/// - the verifier state `VerifierState`, that has access to a random oracle `H` and can deserialize/squeeze elements from the group `G`.
-/// - the secret key `witness`
-/// It returns a zero-knowledge proof of knowledge of `witness` as a sequence of bytes.
-#[allow(non_snake_case)]
-fn verify<G, H>(
-    // `ArkGroupMelin` contains the veirifier state, including the messages currently read. In addition, it is aware of the group `G`
-    // from which it can serialize/deserialize elements.
-    verifier_state: &mut VerifierState<H>,
-    // The group generator `P``
-    P: G,
-    // The public key `X`
-    X: G,
 ) -> ProofResult<()>
 where
     G: CurveGroup,
-    H: DuplexSpongeInterface,
-    for<'a> VerifierState<'a, H>: GroupToUnitDeserialize<G>
-        + FieldToUnitDeserialize<G::ScalarField>
+    R: rand::RngCore + rand::CryptoRng,
+    ProverState<DefaultHash, u8, R>: ProverGroupMessageExt<G>
+        + ProverFieldMessageExt<G::ScalarField>
         + UnitToField<G::ScalarField>,
 {
-    // Read the protocol from the transcript.
-    // [[Side note:
-    // The method `next_points` internally performs point validation.
-    // Another implementation that does not use spongefish might choose not to validate the point here, but only validate the public-key.
-    // This leads to different errors to be returned: here the proof fails with SerializationError, whereas the other implementation would fail with InvalidProof.
-    // ]]
-    let [K] = verifier_state.next_points().unwrap();
-    let [c] = verifier_state.challenge_scalars().unwrap();
-    let [r]: [G::ScalarField; 1] = verifier_state.next_scalars().unwrap();
+    // Generate random nonce
+    let k = G::ScalarField::rand(prover.rng().unwrap());
+    let K = P * k;
 
-    // Check the verification equation, otherwise return a verification error.
-    // The type ProofError is an enum that can report:
-    // - InvalidProof: the proof is not valid
-    // - InvalidIO: the transcript does not match the domain separator
-    // - SerializationError: there was an error serializing/deserializing an element
+    // Send commitment
+    prover.message_points(Label::from("commitment"), &[K]);
+
+    // Get challenge from transcript (Fiat-Shamir)
+    let mut c_buf = [G::ScalarField::default(); 1];
+    prover.fill_challenge_scalars(Label::from("challenge"), &mut c_buf);
+    let c = c_buf[0];
+
+    // Compute and send response
+    let r = k + c * x;
+    prover.message_scalars(Label::from("response"), &[r]);
+
+    Ok(())
+}
+
+/// Schnorr proof verification
+#[allow(non_snake_case)]
+fn verify<G>(verifier: &mut VerifierState<DefaultHash, u8>, P: G, X: G) -> ProofResult<()>
+where
+    G: CurveGroup,
+    for<'a> VerifierState<'a, DefaultHash, u8>: VerifierGroupMessageExt<G>
+        + VerifierFieldMessageExt<G::ScalarField>
+        + UnitToField<G::ScalarField>,
+{
+    // Read commitment
+    let mut K_buf = [G::default(); 1];
+    verifier.fill_message_points(Label::from("commitment"), &mut K_buf);
+    let K = K_buf[0];
+
+    // Generate challenge from transcript (same as prover via Fiat-Shamir)
+    let mut c_buf = [G::ScalarField::default(); 1];
+    verifier.fill_challenge_scalars(Label::from("challenge"), &mut c_buf);
+    let c = c_buf[0];
+
+    // Read response
+    let mut r_buf = [G::ScalarField::default(); 1];
+    verifier.fill_message_scalars(Label::from("response"), &mut r_buf);
+    let r = r_buf[0];
+
+    // Verify: P * r == K + X * c
     if P * r == K + X * c {
         Ok(())
     } else {
         Err(ProofError::InvalidProof)
     }
-
-    // From here, another proof can be verified using the same  instance
-    // and proofs can be composed. The transcript holds the whole proof,
 }
 
-#[allow(non_snake_case)]
 fn main() {
-    // Instantiate the group and the random oracle:
-    // Set the group:
+    println!("=== Schnorr Proof Example ===\n");
+
+    // Choose elliptic curve group (Curve25519)
     type G = ark_curve25519::EdwardsProjective;
-    // Set the hash function (commented out other valid choices):
-    // type H = spongefish::hash::Keccak;
-    type H = spongefish::duplex_sponge::legacy::DigestBridge<blake2::Blake2s256>;
-    // type H = spongefish::hash::legacy::DigestBridge<sha2::Sha256>;
 
-    // Set up the IO for the protocol transcript with domain separator "spongefish::examples::schnorr"
-    let io: DomainSeparator<H> =
-        SchnorrDomainSeparator::<G>::new_schnorr_proof("spongefish::example");
+    // Step 1: Create and finalize the interaction pattern
+    let pattern = schnorr_pattern::<G>();
+    println!("✓ Pattern created and finalized");
 
-    // Set up the elements to prove
+    // Step 2: Setup - generate keys
+    #[allow(non_snake_case)]
     let P = G::generator();
-    let (x, X) = keygen();
+    #[allow(non_snake_case)]
+    let (x, X) = keygen::<G>();
+    println!("✓ Keys generated\n");
 
-    // Create the prover transcript, add the statement to it, and then invoke the prover.
-    let mut prover_state = io.to_prover_state();
-    prover_state.public_points(&[P, P * x]).unwrap();
-    prover_state.ratchet().unwrap();
-    let proof = prove(&mut prover_state, P, x).expect("Invalid proof");
+    // Step 3: Prover generates proof
+    let proof = {
+        let mut prover = ProverState::new(pattern.clone(), OsRng);
 
-    // Print out the hex-encoded schnorr proof.
-    println!("Here's a Schnorr signature:\n{}", hex::encode(proof));
+        // Send statement (generator and public key)
+        prover
+            .message_points(Label::from("generator"), &[P])
+            .message_points(Label::from("public_key"), &[X])
+            .ratchet();
 
-    // Verify the proof: create the verifier transcript, add the statement to it, and invoke the verifier.
-    let mut verifier_state = io.to_verifier_state(proof);
-    verifier_state.public_points(&[P, X]).unwrap();
-    verifier_state.ratchet().unwrap();
-    verify(&mut verifier_state, P, X).expect("Invalid proof");
+        // Generate and send proof
+        prove(&mut prover, P, x).expect("Prove failed");
+
+        prover.finalize()
+    };
+
+    let proof = match proof {
+        Ok(p) => {
+            println!("✓ Proof generated by prover");
+            p
+        }
+        Err(e) => {
+            println!("✗ Proving failed: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Step 4: Verifier checks proof
+    let result = {
+        let mut verifier = VerifierState::new(pattern.clone(), &proof);
+
+        // Read statement
+        let mut generator = [G::default(); 1];
+        let mut public_key = [G::default(); 1];
+        verifier
+            .fill_message_points(Label::from("generator"), &mut generator)
+            .fill_message_points(Label::from("public_key"), &mut public_key)
+            .ratchet();
+
+        println!("✓ Statement read by verifier");
+
+        // Verify the proof
+        verify(&mut verifier, generator[0], public_key[0]).expect("Verification failed");
+
+        verifier.finalize()
+    };
+
+    match result {
+        Ok(()) => {
+            println!("✓ Proof verified successfully!");
+            println!("  The prover knows the secret key for the public key");
+        }
+        Err(e) => {
+            println!("✗ Verification failed: {:?}", e);
+            std::process::exit(1);
+        }
+    }
 }

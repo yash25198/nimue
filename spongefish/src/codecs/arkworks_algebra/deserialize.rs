@@ -1,107 +1,198 @@
 use ark_ec::{
-    short_weierstrass::{Affine as SWAffine, Projective as SWCurve, SWCurveConfig},
-    twisted_edwards::{Affine as EdwardsAffine, Projective as EdwardsCurve, TECurveConfig},
+    short_weierstrass::{Affine as SWAffine, SWCurveConfig},
+    twisted_edwards::{Affine as TEAffine, TECurveConfig},
     CurveGroup,
 };
-use ark_ff::{Field, Fp, FpConfig};
-use ark_serialize::{CanonicalDeserialize, SerializationError};
+use ark_ff::{Field, Fp, FpConfig, PrimeField};
 
 use super::{FieldToUnitDeserialize, GroupToUnitDeserialize};
 use crate::{
-    traits::{BytesToUnitDeserialize, UnitTranscript},
-    DuplexSpongeInterface, ProofResult, VerifierState,
+    codecs::bytes_modp, pattern::{Label, PatternError}, traits::BytesToUnitDeserialize, DuplexSpongeInterface,
+    ProofError, ProofResult, VerifierState,
 };
 
-impl<F, H> FieldToUnitDeserialize<F> for VerifierState<'_, H>
+// ============================================================================
+// VERIFIER IMPLEMENTATIONS FOR u8 (unit-basedoperations)
+// ============================================================================
+
+impl<F, H> FieldToUnitDeserialize<F> for VerifierState<'_, H, u8>
 where
     F: Field,
     H: DuplexSpongeInterface,
 {
-    fn fill_next_scalars(&mut self, output: &mut [F]) -> ProofResult<()> {
-        let point_size = F::default().compressed_size();
-        let mut buf = vec![0u8; point_size];
-        for o in output.iter_mut() {
-            self.fill_next_bytes(&mut buf)?;
-            *o = F::deserialize_compressed(buf.as_slice())?;
+    fn fill_next_scalars(&mut self, output: &mut [F]) -> ProofResult<&mut Self> {
+        // Calculate buffer size for ALL scalars
+        let scalar_bytes = bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE);
+        let total_bytes = output.len() * scalar_bytes;
+        let mut buf = vec![0u8; total_bytes];
+
+        // Read all bytes at once - this matches the pattern's single message_bytes call
+        self.fill_next_bytes(Label::BaseFieldCoefficients, &mut buf);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
         }
-        Ok(())
+
+        // Deserialize each scalar from its chunk
+        for (i, o) in output.iter_mut().enumerate() {
+            let start = i * scalar_bytes;
+            let end = start + scalar_bytes;
+            *o = F::deserialize_compressed(&buf[start..end])?;
+        }
+
+        Ok(self)
     }
 }
 
-impl<G, H> GroupToUnitDeserialize<G> for VerifierState<'_, H>
+impl<G, H> GroupToUnitDeserialize<G> for VerifierState<'_, H, u8>
 where
     G: CurveGroup,
     H: DuplexSpongeInterface,
 {
-    fn fill_next_points(&mut self, output: &mut [G]) -> ProofResult<()> {
+    fn fill_next_points(&mut self, output: &mut [G]) -> ProofResult<&mut Self> {
+        // Calculate buffer size for ALL points
         let point_size = G::default().compressed_size();
-        let mut buf = vec![0u8; point_size];
+        let total_bytes = output.len() * point_size;
+        let mut buf = vec![0u8; total_bytes];
 
-        for o in output.iter_mut() {
-            self.fill_next_units(&mut buf)?;
-            *o = G::deserialize_compressed(buf.as_slice())?;
+        // Read all bytes at once - this matches the pattern's single message_bytes call
+        self.fill_next_bytes(Label::SerializedGroup, &mut buf);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
         }
-        Ok(())
+
+        // Deserialize each point from its chunk
+        for (i, o) in output.iter_mut().enumerate() {
+            let start = i * point_size;
+            let end = start + point_size;
+            *o = G::deserialize_compressed(&buf[start..end])?;
+        }
+
+        Ok(self)
     }
 }
 
-impl<H, C, const N: usize> FieldToUnitDeserialize<Fp<C, N>> for VerifierState<'_, H, Fp<C, N>>
+// ============================================================================
+// VERIFIER IMPLEMENTATIONS FOR Fp<C, N> (field-native operations)
+// ============================================================================
+
+impl<F, H, C, const N: usize> FieldToUnitDeserialize<F> for VerifierState<'_, H, Fp<C, N>>
 where
+    F: Field<BasePrimeField = Fp<C, N>>,
     C: FpConfig<N>,
     H: DuplexSpongeInterface<Fp<C, N>>,
 {
-    fn fill_next_scalars(&mut self, output: &mut [Fp<C, N>]) -> crate::ProofResult<()> {
-        self.fill_next_units(output)?;
-        Ok(())
+    fn fill_next_scalars(&mut self, output: &mut [F]) -> ProofResult<&mut Self> {
+        // Calculate number of base field elements needed
+        let extension_degree = F::extension_degree() as usize;
+        let mut flattened = vec![Fp::<C, N>::default(); output.len() * extension_degree];
+
+        // Read base field coefficients directly - matches pattern's inner message_units call
+        self.fill_next_units(Label::BaseFieldCoefficients, &mut flattened);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
+        }
+
+        // Convert base field elements back to extension field
+        for (i, o) in output.iter_mut().enumerate() {
+            let start = i * extension_degree;
+            let end = start + extension_degree;
+            *o = F::from_base_prime_field_elems(flattened[start..end].iter().copied())
+                .expect("Could not convert from base field elements");
+        }
+
+        Ok(self)
     }
 }
 
-impl<P, H, C, const N: usize> GroupToUnitDeserialize<EdwardsCurve<P>>
+// ============================================================================
+// SHORT WEIERSTRASS CURVE IMPLEMENTATION
+// ============================================================================
+
+impl<P, H, C, const N: usize> GroupToUnitDeserialize<ark_ec::short_weierstrass::Projective<P>>
     for VerifierState<'_, H, Fp<C, N>>
 where
-    C: FpConfig<N>,
-    H: DuplexSpongeInterface<Fp<C, N>>,
-    P: TECurveConfig<BaseField = Fp<C, N>>,
-{
-    fn fill_next_points(&mut self, output: &mut [EdwardsCurve<P>]) -> ProofResult<()> {
-        for o in output.iter_mut() {
-            let o_affine = EdwardsAffine::deserialize_compressed(&mut self.narg_string)?;
-            *o = o_affine.into();
-            self.public_units(&[o.x, o.y]);
-        }
-        Ok(())
-    }
-}
-
-impl<P, H, C, const N: usize> GroupToUnitDeserialize<SWCurve<P>> for VerifierState<'_, H, Fp<C, N>>
-where
-    C: FpConfig<N>,
-    H: DuplexSpongeInterface<Fp<C, N>>,
     P: SWCurveConfig<BaseField = Fp<C, N>>,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+    C: FpConfig<N>,
 {
-    fn fill_next_points(&mut self, output: &mut [SWCurve<P>]) -> ProofResult<()> {
-        for o in output.iter_mut() {
-            let o_affine = SWAffine::deserialize_compressed(&mut self.narg_string)?;
-            *o = o_affine.into();
-            self.public_units(&[o.x, o.y]);
+    fn fill_next_points(
+        &mut self,
+        output: &mut [ark_ec::short_weierstrass::Projective<P>],
+    ) -> ProofResult<&mut Self> {
+        // Read all SerializedGroup (2 per point: x and y) directly
+        let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
+        self.fill_next_units(Label::SerializedGroup, &mut coords);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
         }
-        Ok(())
+
+        // Convert coordinate pairs to points using Short Weierstrass constructor
+        for (i, o) in output.iter_mut().enumerate() {
+            let x = coords[i * 2];
+            let y = coords[i * 2 + 1];
+
+            // Create affine point using Short Weierstrass new_unchecked
+            let affine = SWAffine::<P>::new_unchecked(x, y);
+            *o = affine.into();
+        }
+
+        Ok(self)
     }
 }
 
+// ============================================================================
+// TWISTED EDWARDS CURVE IMPLEMENTATION
+// ============================================================================
+
+impl<P, H, C, const N: usize> GroupToUnitDeserialize<ark_ec::twisted_edwards::Projective<P>>
+    for VerifierState<'_, H, Fp<C, N>>
+where
+    P: TECurveConfig<BaseField = Fp<C, N>>,
+    H: DuplexSpongeInterface<Fp<C, N>>,
+    C: FpConfig<N>,
+{
+    fn fill_next_points(
+        &mut self,
+        output: &mut [ark_ec::twisted_edwards::Projective<P>],
+    ) -> ProofResult<&mut Self> {
+        // Read all SerializedGroup (2 per point: x and y) directly
+        let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
+        self.fill_next_units(Label::SerializedGroup, &mut coords);
+        
+        if self.has_error() {
+            return Err(ProofError::PatternError(self.get_error().cloned().unwrap_or(PatternError::AlreadyFinalized).to_string()));
+        }
+
+        // Convert coordinate pairs to points using Twisted Edwards constructor
+        for (i, o) in output.iter_mut().enumerate() {
+            let x = coords[i * 2];
+            let y = coords[i * 2 + 1];
+
+            // Create affine point using Twisted Edwards new_unchecked
+            let affine = TEAffine::<P>::new_unchecked(x, y);
+            *o = affine.into();
+        }
+
+        Ok(self)
+    }
+}
 #[cfg(test)]
-#[cfg(feature = "disable")]
 mod tests {
     use ark_bls12_381::G1Projective;
     use ark_curve25519::EdwardsProjective;
-    use ark_ec::{CurveGroup, PrimeGroup};
-    use ark_ff::{AdditiveGroup, Fp64, MontBackend, MontConfig, UniformRand};
-    use ark_serialize::CanonicalSerialize;
+    use ark_ff::{AdditiveGroup, Fp64, MontBackend, MontConfig};
 
-    use super::*;
     use crate::{
-        codecs::arkworks_algebra::{FieldPattern, GroupPattern},
-        DefaultHash,
+        codecs::arkworks_algebra::{
+            FieldPattern, GroupPattern, ProverFieldMessageExt, ProverGroupMessageExt,
+            VerifierFieldMessageExt, VerifierGroupMessageExt,
+        },
+        pattern::{Label, PatternState},
+        DefaultHash, ProverState, VerifierState,
     };
 
     /// Custom field for testing: BabyBear
@@ -115,169 +206,204 @@ mod tests {
     #[test]
     fn test_fill_next_scalars_generic_field() {
         use ark_bls12_381::Fr as F;
-        let label = "scalar";
+        use ark_ff::UniformRand;
 
-        // Sample some field elements and serialize them
         let mut rng = ark_std::test_rng();
-        let scalars = [F::rand(&mut rng), F::rand(&mut rng)];
-        let mut raw_bytes = Vec::new();
-        for s in &scalars {
-            s.serialize_compressed(&mut raw_bytes).unwrap();
-        }
+        let expected_scalars = [F::rand(&mut rng), F::rand(&mut rng)];
 
-        // Create a domain separator for absorbing 2 scalars
-        let domsep = <DomainSeparator as FieldDomainSeparator<F>>::add_scalars(
-            DomainSeparator::<DefaultHash>::new("read"),
-            2,
-            label,
-        );
+        // Create proper pattern with field message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_scalars::<F>(Label::custom("scalars"), 2);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
 
-        let mut verifier = domsep.to_verifier_state(&raw_bytes);
+        // Prover generates data
+        let proof = {
+            let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_scalars(Label::custom("scalars"), &expected_scalars);
+            prover.finalize().expect("Failed to finalize prover")
+        };
 
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [F::ZERO; 2];
-        verifier.fill_next_scalars(&mut out).unwrap();
-        assert_eq!(out, scalars, "Deserialized scalars do not match original");
+        verifier.fill_message_scalars(Label::custom("scalars"), &mut out);
+
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
+
+        // Verify the data matches
+        assert_eq!(out, expected_scalars);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_scalars_fp_unit() {
+        use ark_ff::UniformRand;
+
         let mut rng = ark_std::test_rng();
-        let values = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
+        let expected_scalars = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
 
-        // Serialize scalars
-        let mut raw = Vec::new();
-        for v in &values {
-            v.serialize_compressed(&mut raw).unwrap();
-        }
+        // Create proper pattern with field message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_scalars::<BabyBear>(Label::custom("scalars"), 2);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
 
-        // Set up domain separator
-        let domsep = <DomainSeparator as FieldDomainSeparator<BabyBear>>::add_scalars(
-            DomainSeparator::new("fp-unit"),
-            2,
-            "x",
-        );
+        // Prover generates data
+        let proof = {
+            let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_scalars(Label::custom("scalars"), &expected_scalars);
+            prover.finalize().expect("Failed to finalize prover")
+        };
 
-        let mut verifier = domsep.to_verifier_state(&raw);
+        // Verifier reads data
+        let mut verifier: VerifierState<DefaultHash, u8> = 
+            VerifierState::new(pattern.clone(), &proof);
         let mut out = [BabyBear::ZERO; 2];
-        verifier.fill_next_scalars(&mut out).unwrap();
+        verifier.fill_message_scalars(Label::custom("scalars"), &mut out);
 
-        assert_eq!(out, values, "Fp unit-based deserialization mismatch");
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
+
+        // Verify the data matches
+        assert_eq!(out, expected_scalars);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_points_curve25519_edwards() {
+        use ark_ec::PrimeGroup;
+
         type G = EdwardsProjective;
 
-        // Sample point and serialize it
-        let point = G::generator();
-        let mut compressed = Vec::new();
-        point
-            .into_affine()
-            .serialize_compressed(&mut compressed)
-            .unwrap();
+        let expected_point = G::generator();
 
-        // Create domain separator for one point
-        let domsep = <DomainSeparator as GroupDomainSeparator<G>>::add_points(
-            DomainSeparator::new("curve25519-ed"),
-            1,
-            "pt",
-        );
+        // Create proper pattern with point message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_points::<G>(Label::custom("point"), 1);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
 
-        // Load verifier with serialized point
-        let mut verifier = domsep.to_verifier_state(&compressed);
+        // Prover generates data
+        let proof = {
+            let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_points(Label::custom("point"), &[expected_point]);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [G::ZERO];
-        verifier.fill_next_points(&mut out).unwrap();
+        verifier.fill_message_points(Label::custom("point"), &mut out);
 
-        assert_eq!(
-            out[0].into_affine(),
-            point.into_affine(),
-            "Curve25519 Edwards point deserialization failed"
-        );
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
+
+        // Verify the data matches
+        assert_eq!(out[0], expected_point);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_points_bls12_sw() {
+        use ark_ec::PrimeGroup;
+
         type G = G1Projective;
 
-        // Sample point and serialize it
-        let point = G::generator();
-        let mut compressed = Vec::new();
-        point
-            .into_affine()
-            .serialize_compressed(&mut compressed)
-            .unwrap();
+        let expected_point = G::generator();
 
-        // Create domain separator for one point
-        let domsep = <DomainSeparator as GroupDomainSeparator<G>>::add_points(
-            DomainSeparator::new("bls12-sw"),
-            1,
-            "pt",
-        );
+        // Create proper pattern with point message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_points::<G>(Label::custom("point"), 1);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
 
-        let mut verifier = domsep.to_verifier_state(&compressed);
+        // Prover generates data
+        let proof = {
+            let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_points(Label::custom("point"), &[expected_point]);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [G::ZERO];
-        verifier.fill_next_points(&mut out).unwrap();
+        verifier.fill_message_points(Label::custom("point"), &mut out);
 
-        assert_eq!(
-            out[0].into_affine(),
-            point.into_affine(),
-            "SW deserialization failed"
-        );
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
+
+        // Verify the data matches
+        assert_eq!(out[0], expected_point);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_points_fp_unit_edwards() {
+        use ark_ec::PrimeGroup;
+
         type G = EdwardsProjective;
 
-        let point = G::generator();
-        let mut bytes = Vec::new();
-        point
-            .into_affine()
-            .serialize_compressed(&mut bytes)
-            .unwrap();
+        let expected_point = G::generator();
 
-        let domsep = <DomainSeparator as GroupDomainSeparator<G>>::add_points(
-            DomainSeparator::new("curve-edwards-fp"),
-            1,
-            "pt",
-        );
+        // Create proper pattern with point message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_points::<G>(Label::custom("point"), 1);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
 
-        let mut verifier = domsep.to_verifier_state(&bytes);
+        // Prover generates data (using u8 unit type)
+        let proof = {
+            let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_points(Label::custom("point"), &[expected_point]);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [G::ZERO];
-        verifier.fill_next_points(&mut out).unwrap();
+        verifier.fill_message_points(Label::custom("point"), &mut out);
 
-        assert_eq!(
-            out[0].into_affine(),
-            point.into_affine(),
-            "Edwards point deserialization via Fp failed"
-        );
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
+
+        // Verify the data matches
+        assert_eq!(out[0], expected_point);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_points_fp_unit_swcurve() {
+        use ark_ec::PrimeGroup;
+
         type G = G1Projective;
 
-        let point = G::generator();
-        let mut bytes = Vec::new();
-        point
-            .into_affine()
-            .serialize_compressed(&mut bytes)
-            .unwrap();
+        let expected_point = G::generator();
 
-        let domsep = <DomainSeparator as GroupDomainSeparator<G>>::add_points(
-            DomainSeparator::new("curve-sw-fp"),
-            1,
-            "pt",
-        );
+        // Create proper pattern with point message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_points::<G>(Label::custom("point"), 1);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
 
-        let mut verifier = domsep.to_verifier_state(&bytes);
+        // Prover generates data (using u8 unit type)
+        let proof = {
+            let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_points(Label::custom("point"), &[expected_point]);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [G::ZERO];
-        verifier.fill_next_points(&mut out).unwrap();
+        verifier.fill_message_points(Label::custom("point"), &mut out);
 
-        assert_eq!(
-            out[0].into_affine(),
-            point.into_affine(),
-            "SW point deserialization via Fp failed"
-        );
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
+
+        // Verify the data matches
+        assert_eq!(out[0], expected_point);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 }
