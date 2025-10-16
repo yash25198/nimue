@@ -58,7 +58,7 @@
 //!  let pattern = pattern.finalize().expect("Failed to finalize pattern");
 //!
 //! // Use pattern with prover/verifier
-//! let mut prover = ProverState::from(&pattern);
+//! let mut prover = ProverState::from(pattern);
 //! // ... protocol execution ...
 //! ```
 //!

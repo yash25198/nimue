@@ -231,7 +231,7 @@ mod tests {
             .expect("Failed to finalize pattern");
 
         let mut verifier: VerifierState<DefaultHash, u8> =
-            VerifierState::new(Arc::new(pattern), &[]);
+            VerifierState::new(pattern, &[]);
         let mut out = [BabyBear::ZERO; 2];
         let result = verifier.fill_next_scalars(&mut out);
 
