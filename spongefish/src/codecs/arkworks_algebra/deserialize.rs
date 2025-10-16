@@ -182,16 +182,17 @@ where
 }
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use ark_bls12_381::G1Projective;
     use ark_curve25519::EdwardsProjective;
     use ark_ff::{AdditiveGroup, Fp64, MontBackend, MontConfig};
 
     use crate::{
-        codecs::arkworks_algebra::{FieldToUnitDeserialize, GroupToUnitDeserialize},
-        pattern::PatternState,
-        DefaultHash, VerifierState,
+        codecs::arkworks_algebra::{
+            FieldPattern, GroupPattern, ProverFieldMessageExt, ProverGroupMessageExt,
+            VerifierFieldMessageExt, VerifierGroupMessageExt,
+        },
+        pattern::{Label, PatternState},
+        DefaultHash, ProverState, VerifierState,
     };
 
     /// Custom field for testing: BabyBear
@@ -205,120 +206,204 @@ mod tests {
     #[test]
     fn test_fill_next_scalars_generic_field() {
         use ark_bls12_381::Fr as F;
+        use ark_ff::UniformRand;
 
-        // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::new()
-            .finalize()
-            .expect("Failed to finalize pattern");
+        let mut rng = ark_std::test_rng();
+        let expected_scalars = [F::rand(&mut rng), F::rand(&mut rng)];
 
-        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
+        // Create proper pattern with field message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_scalars::<F>(Label::custom("scalars"), 2);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
 
+        // Prover generates data
+        let proof = {
+            let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_scalars(Label::custom("scalars"), &expected_scalars);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [F::ZERO; 2];
-        let result = verifier.fill_next_scalars(&mut out);
+        verifier.fill_message_scalars(Label::custom("scalars"), &mut out);
 
-        // We expect this to fail because the pattern doesn't have the right interactions
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
 
-        // Must call abort() to prevent drop panic
-        let _ = verifier.abort();
+        // Verify the data matches
+        assert_eq!(out, expected_scalars);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_scalars_fp_unit() {
-        // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::new()
-            .finalize()
-            .expect("Failed to finalize pattern");
+        use ark_ff::UniformRand;
 
-        let mut verifier: VerifierState<DefaultHash, u8> =
-            VerifierState::new(pattern, &[]);
+        let mut rng = ark_std::test_rng();
+        let expected_scalars = [BabyBear::rand(&mut rng), BabyBear::rand(&mut rng)];
+
+        // Create proper pattern with field message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_scalars::<BabyBear>(Label::custom("scalars"), 2);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
+
+        // Prover generates data
+        let proof = {
+            let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_scalars(Label::custom("scalars"), &expected_scalars);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier: VerifierState<DefaultHash, u8> = 
+            VerifierState::new(pattern.clone(), &proof);
         let mut out = [BabyBear::ZERO; 2];
-        let result = verifier.fill_next_scalars(&mut out);
+        verifier.fill_message_scalars(Label::custom("scalars"), &mut out);
 
-        // We expect this to fail because the pattern doesn't have the right interactions
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
 
-        // Must call abort() to prevent drop panic
-        let _ = verifier.abort();
+        // Verify the data matches
+        assert_eq!(out, expected_scalars);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_points_curve25519_edwards() {
+        use ark_ec::PrimeGroup;
+
         type G = EdwardsProjective;
 
-        // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::new()
-            .finalize()
-            .expect("Failed to finalize pattern");
+        let expected_point = G::generator();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
+        // Create proper pattern with point message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_points::<G>(Label::custom("point"), 1);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
+
+        // Prover generates data
+        let proof = {
+            let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_points(Label::custom("point"), &[expected_point]);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [G::ZERO];
-        let result = verifier.fill_next_points(&mut out);
+        verifier.fill_message_points(Label::custom("point"), &mut out);
 
-        // We expect this to fail because the pattern doesn't have the right interactions
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
 
-        // Must call abort() to prevent drop panic
-        let _ = verifier.abort();
+        // Verify the data matches
+        assert_eq!(out[0], expected_point);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_points_bls12_sw() {
+        use ark_ec::PrimeGroup;
+
         type G = G1Projective;
 
-        // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::new()
-            .finalize()
-            .expect("Failed to finalize pattern");
+        let expected_point = G::generator();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
+        // Create proper pattern with point message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_points::<G>(Label::custom("point"), 1);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
+
+        // Prover generates data
+        let proof = {
+            let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_points(Label::custom("point"), &[expected_point]);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [G::ZERO];
-        let result = verifier.fill_next_points(&mut out);
+        verifier.fill_message_points(Label::custom("point"), &mut out);
 
-        // We expect this to fail because the pattern doesn't have the right interactions
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
 
-        // Must call abort() to prevent drop panic
-        let _ = verifier.abort();
+        // Verify the data matches
+        assert_eq!(out[0], expected_point);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_points_fp_unit_edwards() {
+        use ark_ec::PrimeGroup;
+
         type G = EdwardsProjective;
 
-        // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::new()
-            .finalize()
-            .expect("Failed to finalize pattern");
+        let expected_point = G::generator();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
+        // Create proper pattern with point message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_points::<G>(Label::custom("point"), 1);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
+
+        // Prover generates data (using u8 unit type)
+        let proof = {
+            let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_points(Label::custom("point"), &[expected_point]);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [G::ZERO];
-        let result = verifier.fill_next_points(&mut out);
+        verifier.fill_message_points(Label::custom("point"), &mut out);
 
-        // We expect this to fail because the pattern doesn't have the right interactions
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
 
-        // Must call abort() to prevent drop panic
-        let _ = verifier.abort();
+        // Verify the data matches
+        assert_eq!(out[0], expected_point);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 
     #[test]
     fn test_fill_next_points_fp_unit_swcurve() {
+        use ark_ec::PrimeGroup;
+
         type G = G1Projective;
 
-        // Create a simple pattern without hierarchical structure
-        let pattern = PatternState::new()
-            .finalize()
-            .expect("Failed to finalize pattern");
+        let expected_point = G::generator();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &[]);
+        // Create proper pattern with point message
+        let mut pattern_builder = PatternState::new();
+        pattern_builder.message_points::<G>(Label::custom("point"), 1);
+        let pattern = pattern_builder.finalize().expect("Failed to finalize pattern");
+
+        // Prover generates data (using u8 unit type)
+        let proof = {
+            let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
+            prover.message_points(Label::custom("point"), &[expected_point]);
+            prover.finalize().expect("Failed to finalize prover")
+        };
+
+        // Verifier reads data
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut out = [G::ZERO];
-        let result = verifier.fill_next_points(&mut out);
+        verifier.fill_message_points(Label::custom("point"), &mut out);
 
-        // We expect this to fail because the pattern doesn't have the right interactions
-        assert!(result.is_err(), "Expected error due to pattern mismatch");
+        // Check for errors before asserting
+        assert!(!verifier.has_error(), "Verifier encountered an error");
 
-        // Must call abort() to prevent drop panic
-        let _ = verifier.abort();
+        // Verify the data matches
+        assert_eq!(out[0], expected_point);
+
+        verifier.finalize().expect("Failed to finalize verifier");
     }
 }
