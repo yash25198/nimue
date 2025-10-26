@@ -18,33 +18,32 @@ use ark_ec::{CurveGroup, PrimeGroup};
 use ark_std::UniformRand;
 use rand::rngs::OsRng;
 use spongefish::{
-    codecs::arkworks_algebra::{
-        FieldPattern,
-        GroupPattern,
-        // Extension traits for ergonomic API
-        ProverFieldMessageExt,
-        ProverGroupMessageExt,
-        UnitToField,
-        VerifierFieldMessageExt,
-        VerifierGroupMessageExt,
+    codecs::{
+        arkworks_algebra::{
+            FieldPattern, FieldTranscript, GroupPattern, GroupTranscript, VerifierFieldTranscript,
+            VerifierGroupTranscript,
+        },
+        unit::Pattern as _,
     },
-    codecs::unit::Pattern as _,
     pattern::{InteractionPattern, Label, PatternState},
-    DefaultHash, ProofError, ProofResult, ProverState, VerifierState,
+    DefaultHash, ProverState, VerifierError, VerifierState,
 };
+
 
 /// Create the interaction pattern for Schnorr protocol
 fn schnorr_pattern<G: CurveGroup>() -> InteractionPattern {
     let mut pattern = PatternState::new();
     pattern
-        .message_points::<G>(Label::from("generator"), 1)
-        .message_points::<G>(Label::from("public_key"), 1)
+        // Public params ARE in pattern (affect challenges)
+        .message_public_points::<G>(Label::from("generator"), 1)
+        .message_public_points::<G>(Label::from("public_key"), 1)
         .ratchet()
+        // Proof data
         .message_points::<G>(Label::from("commitment"), 1)
         .challenge_scalars::<G::ScalarField>(Label::from("challenge"), 1)
         .message_scalars::<G::ScalarField>(Label::from("response"), 1);
 
-    pattern.finalize().expect("Failed to finalize pattern")
+    pattern.finalize()
 }
 
 /// Key generation: returns (secret_key, public_key)
@@ -56,20 +55,20 @@ fn keygen<G: PrimeGroup>() -> (G::ScalarField, G) {
 
 /// Schnorr proof generation
 #[allow(non_snake_case)]
-fn prove<G, R>(
-    prover: &mut ProverState<DefaultHash, u8, R>,
-    P: G,
-    x: G::ScalarField,
-) -> ProofResult<()>
+fn prove<G, R>(prover: &mut ProverState<DefaultHash, u8, R>, P: G, X: G, x: G::ScalarField)
 where
     G: CurveGroup,
     R: rand::RngCore + rand::CryptoRng,
-    ProverState<DefaultHash, u8, R>: ProverGroupMessageExt<G>
-        + ProverFieldMessageExt<G::ScalarField>
-        + UnitToField<G::ScalarField>,
+    ProverState<DefaultHash, u8, R>: GroupTranscript<G> + FieldTranscript<G::ScalarField>,
 {
+    // Absorb public parameters
+    prover
+        .message_public_points(Label::from("generator"), &[P])
+        .message_public_points(Label::from("public_key"), &[X])
+        .ratchet();
+
     // Generate random nonce
-    let k = G::ScalarField::rand(prover.rng().unwrap());
+    let k = G::ScalarField::rand(prover.rng());
     let K = P * k;
 
     // Send commitment
@@ -77,45 +76,51 @@ where
 
     // Get challenge from transcript (Fiat-Shamir)
     let mut c_buf = [G::ScalarField::default(); 1];
-    prover.fill_challenge_scalars(Label::from("challenge"), &mut c_buf);
+    prover.challenge_scalars(Label::from("challenge"), &mut c_buf);
     let c = c_buf[0];
 
     // Compute and send response
     let r = k + c * x;
     prover.message_scalars(Label::from("response"), &[r]);
-
-    Ok(())
 }
 
 /// Schnorr proof verification
 #[allow(non_snake_case)]
-fn verify<G>(verifier: &mut VerifierState<DefaultHash, u8>, P: G, X: G) -> ProofResult<()>
+fn verify<G>(verifier: &mut VerifierState<DefaultHash, u8>, P: G, X: G) -> Result<(), VerifierError>
 where
     G: CurveGroup,
-    for<'a> VerifierState<'a, DefaultHash, u8>: VerifierGroupMessageExt<G>
-        + VerifierFieldMessageExt<G::ScalarField>
-        + UnitToField<G::ScalarField>,
+    for<'a> VerifierState<'a, DefaultHash, u8>:
+        VerifierGroupTranscript<G> + VerifierFieldTranscript<G::ScalarField>,
 {
+    // Absorb same public parameters
+    verifier
+        .message_public_points(Label::from("generator"), &[P])
+        .message_public_points(Label::from("public_key"), &[X])
+        .ratchet();
+
     // Read commitment
     let mut K_buf = [G::default(); 1];
-    verifier.fill_message_points(Label::from("commitment"), &mut K_buf);
+    verifier.read_message_points(Label::from("commitment"), &mut K_buf)?;
+
     let K = K_buf[0];
 
     // Generate challenge from transcript (same as prover via Fiat-Shamir)
     let mut c_buf = [G::ScalarField::default(); 1];
-    verifier.fill_challenge_scalars(Label::from("challenge"), &mut c_buf);
+    verifier.challenge_scalars(Label::from("challenge"), &mut c_buf);
     let c = c_buf[0];
 
     // Read response
     let mut r_buf = [G::ScalarField::default(); 1];
-    verifier.fill_message_scalars(Label::from("response"), &mut r_buf);
+    verifier.read_message_scalars(Label::from("response"), &mut r_buf)?;
     let r = r_buf[0];
 
     // Verify: P * r == K + X * c
     if P * r == K + X * c {
         Ok(())
     } else {
-        Err(ProofError::InvalidProof)
+        Err(VerifierError::DeserializationError(
+            "Invalid proof: equation does not hold".to_string(),
+        ))
     }
 }
 
@@ -140,45 +145,27 @@ fn main() {
     let proof = {
         let mut prover = ProverState::new(pattern.clone(), OsRng);
 
-        // Send statement (generator and public key)
-        prover
-            .message_points(Label::from("generator"), &[P])
-            .message_points(Label::from("public_key"), &[X])
-            .ratchet();
-
-        // Generate and send proof
-        prove(&mut prover, P, x).expect("Prove failed");
+        // Generate and send proof (includes public params inside)
+        prove(&mut prover, P, X, x);
 
         prover.finalize()
     };
 
-    let proof = match proof {
-        Ok(p) => {
-            println!("✓ Proof generated by prover");
-            p
-        }
-        Err(e) => {
-            println!("✗ Proving failed: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    println!("✓ Proof generated by prover");
+    println!("  Proof size: {} bytes\n", proof.len());
 
     // Step 4: Verifier checks proof
     let result = {
         let mut verifier = VerifierState::new(pattern.clone(), &proof);
 
-        // Read statement
-        let mut generator = [G::default(); 1];
-        let mut public_key = [G::default(); 1];
-        verifier
-            .fill_message_points(Label::from("generator"), &mut generator)
-            .fill_message_points(Label::from("public_key"), &mut public_key)
-            .ratchet();
+        // Verify the proof (includes public params inside)
+        let verify_result = verify(&mut verifier, P, X);
 
-        println!("✓ Statement read by verifier");
-
-        // Verify the proof
-        verify(&mut verifier, generator[0], public_key[0]).expect("Verification failed");
+        // Check for verification equation failure first
+        if let Err(e) = verify_result {
+            println!("✗ Verification failed: {:?}", e);
+            std::process::exit(1);
+        }
 
         verifier.finalize()
     };

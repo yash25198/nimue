@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use super::{
-    Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, PatternError, PatternResult,
-};
+use super::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length};
 
 /// Inner state for pattern playback.
 ///
@@ -44,26 +42,37 @@ impl PatternPlayerInner {
     }
 
     /// Play the next interaction in the pattern.
-    pub fn interact(&mut self, interaction: Interaction) -> Result<(), PatternError> {
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - The interaction doesn't match the expected pattern interaction
+    /// - Maximum nesting depth is exceeded
+    /// - There's a mismatched begin/end pair
+    /// - The pattern is already finalized
+    pub fn interact(&mut self, interaction: Interaction) {
         if self.finalized {
-            return Err(PatternError::AlreadyFinalized);
+            panic!("Pattern player is already finalized");
         }
 
         let expected = self
             .pattern
             .interactions()
             .get(self.position)
-            .ok_or_else(|| PatternError::NoMoreExpected {
-                got: interaction.clone(),
-            })?;
+            .unwrap_or_else(|| {
+                panic!(
+                    "No more expected interactions in pattern, got: {:?}",
+                    interaction
+                )
+            });
 
         // Validate the interaction matches the expected one first
         if expected != &interaction {
             self.finalized = true;
-            return Err(PatternError::UnexpectedInteraction {
-                expected: expected.clone(),
-                got: interaction.clone(),
-            });
+            panic!(
+                "Unexpected interaction: got {:?}, expected {:?}",
+                interaction, expected
+            );
         }
 
         // Validate hierarchy tracking
@@ -71,27 +80,26 @@ impl PatternPlayerInner {
             Hierarchy::Begin => {
                 if self.hierarchy_stack.len() >= Self::MAX_NESTING_DEPTH {
                     self.finalized = true;
-                    return Err(PatternError::DepthExceeded {
-                        limit: Self::MAX_NESTING_DEPTH,
-                    });
+                    panic!(
+                        "Maximum nesting depth exceeded: {}",
+                        Self::MAX_NESTING_DEPTH
+                    );
                 }
                 self.hierarchy_stack.push(self.position);
             }
             Hierarchy::End => {
-                let begin_pos =
-                    self.hierarchy_stack
-                        .pop()
-                        .ok_or_else(|| PatternError::MissingBegin {
-                            end: interaction.clone(),
-                        })?;
+                let begin_pos = self
+                    .hierarchy_stack
+                    .pop()
+                    .unwrap_or_else(|| panic!("Missing Begin for {:?}", interaction));
 
                 if let Some(begin) = self.pattern.interactions().get(begin_pos) {
                     if !interaction.closes(begin) {
                         self.finalized = true;
-                        return Err(PatternError::MismatchedBeginEnd {
-                            begin: begin.clone(),
-                            end: interaction.clone(),
-                        });
+                        panic!(
+                            "Mismatched begin and end: begin {:?}, end {:?}",
+                            begin, interaction
+                        );
                     }
                 }
             }
@@ -100,38 +108,55 @@ impl PatternPlayerInner {
             }
         }
         self.position += 1;
-        Ok(())
     }
 
     /// Mark the pattern playback as aborted.
-    pub fn abort(&mut self) -> Result<(), PatternError> {
+    pub fn abort(&mut self) {
         if self.finalized {
-            return Err(PatternError::AlreadyFinalized);
+            panic!("Pattern player is already finalized");
         }
         self.finalized = true;
-        Ok(())
     }
 
-    /// Finalize the sequence of interactions. Returns an error if there
-    /// are unfinished interactions.
-    pub fn finalize_inner(&mut self) -> Result<(), PatternError> {
+    /// Finalize the sequence of interactions.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are unfinished interactions.
+    pub fn finalize_inner(&mut self) {
         if self.position > self.pattern.interactions().len() {
-            return Err(PatternError::DepthExceeded {
-                limit: self.position,
-            });
+            panic!(
+                "Pattern position {} exceeds pattern length {}",
+                self.position,
+                self.pattern.interactions().len()
+            );
         }
 
         if self.finalized {
-            return Err(PatternError::AlreadyFinalized);
+            panic!("Pattern player is already finalized");
         }
 
         if self.position < self.pattern.interactions().len() {
-            let expected = self.pattern.interactions()[self.position].clone();
-            return Err(PatternError::TranscriptNotFinished { expected });
+            let expected = &self.pattern.interactions()[self.position];
+            panic!("Transcript not finished, expecting {:?}", expected);
         }
 
         self.finalized = true;
-        Ok(())
+    }
+
+    /// Check if the pattern player is finalized.
+    #[must_use]
+    pub fn is_finalized(&self) -> bool {
+        self.finalized
+    }
+
+    /// Finalize the pattern player.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there are unfinished interactions.
+    pub fn finalize(mut self) {
+        self.finalize_inner();
     }
 }
 
@@ -148,67 +173,24 @@ impl Drop for PatternPlayerInner {
 
 /// Play back an interaction pattern and make sure all interactions match up.
 ///
-/// This is a wrapper around [`PatternPlayerInner`] that provides ergonomic method chaining
-/// with automatic error propagation.
-///
 /// # Panics
 ///
-/// Panics on [`Drop`] if there are unfinished interactions (the inner `PatternPlayerInner`
-/// is not properly finalized).
-pub type PatternPlayer = PatternResult<PatternPlayerInner>;
-
-impl PatternPlayer {
-    /// Create a new pattern player.
-    #[must_use]
-    pub fn new(pattern: Arc<InteractionPattern>) -> Self {
-        PatternResult::from_value(PatternPlayerInner::new(pattern))
-    }
-
-    /// Get a reference to the underlying pattern.
-    pub fn pattern(&self) -> Option<&Arc<InteractionPattern>> {
-        self.inner().map(|inner| inner.pattern())
-    }
-
-    /// Finalize the sequence of interactions. Returns an error if there
-    /// are unfinished interactions.
-    pub fn finalize(mut self) -> Result<(), PatternError> {
-        let inner = self.inner_mut().ok_or(PatternError::AlreadyFinalized)?;
-        inner.finalize_inner()?;
-        // Don't call PatternResult::finalize() because we want to consume self
-        // and let the inner Drop handler run to check finalization
-        Ok(())
-    }
-}
+/// Panics on [`Drop`] if there are unfinished interactions.
+pub type PatternPlayer = PatternPlayerInner;
 
 impl super::Pattern for PatternPlayer {
     fn abort(&mut self) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            if let Err(e) = inner.abort() {
-                self.set_error(e);
-            }
-        }
+        self.abort();
         self
     }
 
     fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            if let Err(e) =
-                inner.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length))
-            {
-                self.set_error(e);
-            }
-        }
+        self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length));
         self
     }
 
     fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            if let Err(e) =
-                inner.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length))
-            {
-                self.set_error(e);
-            }
-        }
+        self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length));
         self
     }
 }
@@ -223,12 +205,12 @@ mod tests {
 
     #[test]
     fn test_pattern_player_new() {
-        let pattern = PatternState::new().finalize().unwrap();
+        let pattern = PatternState::new().finalize();
         let mut player = PatternPlayer::new(Arc::new(pattern));
         // Just test that creation succeeds
         // PatternState::new().finalize() creates an empty pattern with just protocol begin/end
         // We can finalize immediately
-        player.finalize().unwrap();
+        player.finalize();
     }
 
     #[test]
@@ -236,52 +218,44 @@ mod tests {
         // Test that a player can be created and track a simple interaction
         let mut pattern_state = PatternState::new();
         pattern_state.ratchet();
-        let pattern = Arc::new(pattern_state.finalize().unwrap());
+        let pattern = Arc::new(pattern_state.finalize());
 
         let mut player = PatternPlayer::new(pattern);
         player.begin_protocol(Label::Protocol);
-        player
-            .inner_mut()
-            .unwrap()
-            .interact(crate::pattern::interaction::Interaction::new::<()>(
-                crate::pattern::interaction::Hierarchy::Atomic,
-                crate::pattern::interaction::Kind::Protocol,
-                Label::Ratchet,
-                crate::pattern::Length::None,
-            ))
-            .unwrap();
+        player.interact(crate::pattern::interaction::Interaction::new::<()>(
+            crate::pattern::interaction::Hierarchy::Atomic,
+            crate::pattern::interaction::Kind::Protocol,
+            Label::Ratchet,
+            crate::pattern::Length::None,
+        ));
         player.end_protocol(Label::Protocol);
-        player.finalize().unwrap();
+        player.finalize();
     }
 
     #[test]
+    #[should_panic(expected = "Unexpected interaction")]
     fn test_pattern_player_unexpected_interaction() {
         // Test that mismatched interactions are detected
         let mut pattern_state = PatternState::new();
         pattern_state.ratchet();
-        let pattern = Arc::new(pattern_state.finalize().unwrap());
+        let pattern = Arc::new(pattern_state.finalize());
 
         let mut player = PatternPlayer::new(pattern);
         player.begin_protocol(Label::Protocol);
 
         // Try to interact with wrong kind (message instead of ratchet)
         player.begin_message::<u8>(Label::from("msg"), crate::pattern::Length::Fixed(32));
-
-        // Should have error due to pattern mismatch
-        assert!(player.has_error());
-        let _ = player.abort();
     }
 
     #[test]
     fn test_pattern_player_finalize_incomplete() {
         let mut pattern_state = PatternState::new();
         pattern_state.ratchet();
-        let pattern = Arc::new(pattern_state.finalize().unwrap());
+        let pattern = Arc::new(pattern_state.finalize());
 
         let mut player = PatternPlayer::new(pattern);
         player.begin_protocol(Label::Protocol);
 
-        assert!(!player.has_error());
         player.abort();
     }
 }

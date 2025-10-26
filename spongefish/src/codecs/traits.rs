@@ -2,14 +2,19 @@ macro_rules! field_traits {
     ($Field:path) => {
         /// Absorb and squeeze field elements to the domain separator.
         pub trait FieldPattern {
-            fn message_scalars<F: $Field>(
+            fn message_scalars<F: ark_ff::Field>(
                 &mut self,
-                label: $crate::pattern::Label,
+                label: Label,
                 count: usize,
             ) -> &mut Self;
-            fn challenge_scalars<F: $Field>(
+            fn challenge_scalars<F: ark_ff::Field>(
                 &mut self,
-                label: $crate::pattern::Label,
+                label: Label,
+                count: usize,
+            ) -> &mut Self;
+            fn message_public_scalars<F: ark_ff::Field>(
+                &mut self,
+                label: Label,
                 count: usize,
             ) -> &mut Self;
         }
@@ -69,9 +74,14 @@ macro_rules! group_traits {
     ($Group:path, Scalar: $Field:path) => {
         /// Send group elements in the domain separator.
         pub trait GroupPattern {
-            fn message_points<G: $Group>(
+            fn message_points<G: ark_ec::CurveGroup>(
                 &mut self,
-                label: $crate::pattern::Label,
+                label: Label,
+                count: usize,
+            ) -> &mut Self;
+            fn message_public_points<G: ark_ec::CurveGroup>(
+                &mut self,
+                label: Label,
                 count: usize,
             ) -> &mut Self;
         }

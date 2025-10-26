@@ -156,7 +156,7 @@ pub use duplex_sponge::{legacy::DigestBridge, DuplexSpongeInterface, Unit};
 pub use errors::{ProofError, ProofResult};
 pub use prover::ProverState;
 pub use traits::*;
-pub use verifier::VerifierState;
+pub use verifier::{VerifierError, VerifierState};
 
 /// Default random number generator used ([`rand::rngs::OsRng`]).
 pub type DefaultRng = rand::rngs::OsRng;

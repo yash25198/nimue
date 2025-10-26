@@ -1,21 +1,21 @@
 use ark_ec::CurveGroup;
-use ark_ff::{Field, Fp, FpConfig, PrimeField};
+use ark_ff::{Field, PrimeField};
 
 use super::{FieldPattern, GroupPattern};
 use crate::{
     codecs::{
-        bytes, bytes::Pattern as BytesPattern, bytes_modp, bytes_uniform_modp,
-        unit::Pattern as UnitPattern,
+        bytes::{self, Pattern},
+        bytes_modp, bytes_uniform_modp,
     },
-    pattern::{Label, Length, Pattern, PatternError, PatternState},
+    pattern::{Label, Length, Pattern as _, PatternState},
 };
 
-impl FieldPattern for PatternState {
+impl FieldPattern for crate::pattern::PatternState {
     fn message_scalars<F: Field>(&mut self, label: Label, count: usize) -> &mut Self {
         self.begin_message::<F>(label.clone(), Length::Fixed(count));
         self.message_bytes(
             Label::BaseFieldCoefficients,
-            count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
+            count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE), // ✓ Changed from bytes_modp
         );
         self.end_message::<F>(label, Length::Fixed(count));
         self
@@ -25,14 +25,23 @@ impl FieldPattern for PatternState {
         self.begin_challenge::<F>(label.clone(), Length::Fixed(count));
         self.challenge_bytes(
             Label::BaseFieldCoefficients,
-            count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
+            count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE), // ✓ Already correct
         );
         self.end_challenge::<F>(label, Length::Fixed(count));
         self
     }
-}
 
-impl GroupPattern for PatternState {
+    fn message_public_scalars<F: Field>(&mut self, label: Label, count: usize) -> &mut Self {
+        self.begin_public::<F>(label.clone(), Length::Fixed(count));
+        self.message_bytes(
+            Label::BaseFieldCoefficients,
+            count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE), // ✓ Changed from bytes_modp
+        );
+        self.end_public::<F>(label, Length::Fixed(count));
+        self
+    }
+}
+impl GroupPattern for crate::pattern::PatternState {
     fn message_points<G: CurveGroup>(&mut self, label: Label, count: usize) -> &mut Self {
         use bytes::Pattern as BytesPattern;
 
@@ -40,6 +49,16 @@ impl GroupPattern for PatternState {
         self.begin_message::<G>(label.clone(), Length::Fixed(count));
         self.message_bytes(Label::SerializedGroup, count * compressed_size);
         self.end_message::<G>(label, Length::Fixed(count));
+        self
+    }
+
+    fn message_public_points<G: CurveGroup>(&mut self, label: Label, count: usize) -> &mut Self {
+        use bytes::Pattern as BytesPattern;
+
+        let compressed_size = G::default().compressed_size();
+        self.begin_public::<G>(label.clone(), Length::Fixed(count));
+        self.message_public_bytes(Label::SerializedGroup, count * compressed_size);
+        self.end_public::<G>(label, Length::Fixed(count));
         self
     }
 }
@@ -111,7 +130,7 @@ mod tests {
         }
         let mut pattern = PatternState::new();
         add_schnorr_domain_separator::<_, ark_curve25519::EdwardsProjective>(&mut pattern);
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         assert_eq!(
             format!("{pattern}"),

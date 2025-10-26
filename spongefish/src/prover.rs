@@ -7,10 +7,9 @@ use super::{duplex_sponge::DuplexSpongeInterface, keccak::Keccak, DefaultHash, D
 use crate::{
     duplex_sponge::Unit,
     pattern::{
-        Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, Pattern, PatternError,
-        PatternPlayer, PatternResult,
+        Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, Pattern, PatternPlayer,
     },
-    BytesToUnitSerialize, CommonUnitToBytes, UnitToBytes, UnitTranscript,
+    ByteTranscript, MessageWriter, UnitTranscript,
 };
 
 /// A cryptographically-secure random number generator that is bound to the protocol transcript.
@@ -59,12 +58,20 @@ impl<R: RngCore + CryptoRng> RngCore for ProverPrivateRng<R> {
 
 impl<R: RngCore + CryptoRng> CryptoRng for ProverPrivateRng<R> {}
 
-/// Inner state for the prover.
+/// [`ProverState`] is the prover state of an interactive proof (IP) system.
+/// It internally holds the **secret coins** of the prover for zero-knowledge, and
+/// has the hash function state for the verifier state.
 ///
-/// This type contains the actual logic for prover operations with explicit error returns.
+/// Unless otherwise specified,
+/// [`ProverState`] is set to work over bytes with [`DefaultHash`] and
+/// rely on the default random number generator [`DefaultRng`].
 ///
-/// Use [`ProverState`] (the wrapper type) for ergonomic method chaining.
-pub struct ProverStateInner<H = DefaultHash, U = u8, R = DefaultRng>
+/// # Safety
+///
+/// The prover state is meant to be private in contexts where zero-knowledge is desired.
+/// Leaking the prover state *will* leak the prover's private coins and as such it will compromise the zero-knowledge property.
+/// [`ProverState`] does not implement [`Clone`] or [`Copy`] to prevent accidental leaks.
+pub struct ProverState<H = DefaultHash, U = u8, R = DefaultRng>
 where
     U: Unit,
     H: DuplexSpongeInterface<U>,
@@ -82,7 +89,7 @@ where
     pub(crate) _unit_type: PhantomData<U>,
 }
 
-impl<H, U, R> ProverStateInner<H, U, R>
+impl<H, U, R> ProverState<H, U, R>
 where
     U: Unit,
     H: DuplexSpongeInterface<U>,
@@ -123,111 +130,99 @@ where
             state
                 .pattern
                 .begin::<()>(Label::Protocol, Kind::Protocol, Length::None);
-            if state.pattern.has_error() {
-                // If we fail to begin, mark as finalized to avoid panic in Drop
-                state.pattern.abort();
-                panic!("Failed to begin protocol");
-            }
         }
 
         state
     }
 
     /// Add units with a label to the transcript.
-    pub fn add_units(&mut self, label: Label, input: &[U]) -> Result<(), PatternError> {
-        self.pattern
-            .inner_mut()
-            .ok_or(PatternError::AlreadyFinalized)?
-            .interact(Interaction::new::<U>(
-                Hierarchy::Atomic,
-                Kind::Message,
-                label,
-                Length::Fixed(input.len()),
-            ))?;
+    ///
+    /// # Panics
+    ///
+    /// Panics if the interaction doesn't match the expected pattern.
+    pub fn add_units(&mut self, label: Label, input: &[U]) {
+        self.pattern.interact(Interaction::new::<U>(
+            Hierarchy::Atomic,
+            Kind::Message,
+            label,
+            Length::Fixed(input.len()),
+        ));
 
         self.duplex_sponge.absorb_unchecked(input);
         let old_len = self.narg_string.len();
         U::write(input, &mut self.narg_string)
-            .map_err(|_| PatternError::SerializationError("Write failed".to_string()))?;
+            .unwrap_or_else(|_| panic!("Failed to write units to narg string"));
         self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
-
-        Ok(())
     }
 
     /// Ratchet the sponge state.
-    pub fn ratchet(&mut self) -> Result<(), PatternError> {
-        self.pattern
-            .inner_mut()
-            .ok_or(PatternError::AlreadyFinalized)?
-            .interact(Interaction::new::<()>(
-                Hierarchy::Atomic,
-                Kind::Protocol,
-                Label::Ratchet,
-                Length::None,
-            ))?;
+    ///
+    /// # Panics
+    ///
+    /// Panics if the interaction doesn't match the expected pattern.
+    pub fn ratchet(&mut self) {
+        self.pattern.interact(Interaction::new::<()>(
+            Hierarchy::Atomic,
+            Kind::Protocol,
+            Label::Ratchet,
+            Length::None,
+        ));
         self.duplex_sponge.ratchet_unchecked();
-        Ok(())
     }
 
     /// Add a hint to the proof.
-    pub fn hint_bytes(&mut self, label: Label, hint: &[u8]) -> Result<(), PatternError> {
-        self.pattern
-            .inner_mut()
-            .ok_or(PatternError::AlreadyFinalized)?
-            .interact(Interaction::new::<u8>(
-                Hierarchy::Atomic,
-                Kind::Hint,
-                label,
-                Length::Dynamic,
-            ))?;
+    ///
+    /// # Panics
+    ///
+    /// Panics if the interaction doesn't match the expected pattern.
+    pub fn hint_bytes(&mut self, label: Label, hint: &[u8]) {
+        self.pattern.interact(Interaction::new::<u8>(
+            Hierarchy::Atomic,
+            Kind::Hint,
+            label,
+            Length::Dynamic,
+        ));
         let len = u32::try_from(hint.len())
-            .map_err(|_| PatternError::SerializationError("Hint too large".to_string()))?;
+            .unwrap_or_else(|_| panic!("Hint too large: {} bytes", hint.len()));
         self.narg_string.extend_from_slice(&len.to_le_bytes());
         self.narg_string.extend_from_slice(hint);
-        Ok(())
     }
 
     /// Add public units to the transcript.
-    pub fn public_units(&mut self, label: Label, input: &[U]) -> Result<(), PatternError> {
-        self.pattern
-            .inner_mut()
-            .ok_or(PatternError::AlreadyFinalized)?
-            .interact(Interaction::new::<U>(
-                Hierarchy::Atomic,
-                Kind::Public,
-                label,
-                Length::Fixed(input.len()),
-            ))?;
+    ///
+    /// # Panics
+    ///
+    /// Panics if the interaction doesn't match the expected pattern.
+    pub fn public_units(&mut self, label: Label, input: &[U]) {
+        self.pattern.interact(Interaction::new::<U>(
+            Hierarchy::Atomic,
+            Kind::Public,
+            label,
+            Length::Fixed(input.len()),
+        ));
 
         self.duplex_sponge.absorb_unchecked(input);
 
         // Still absorb into the private RNG for consistency
         let mut temp_buf = Vec::new();
-        U::write(input, &mut temp_buf)
-            .map_err(|_| PatternError::SerializationError("Write failed".to_string()))?;
+        U::write(input, &mut temp_buf).unwrap_or_else(|_| panic!("Failed to write public units"));
         self.rng.ds.absorb_unchecked(&temp_buf);
-
-        Ok(())
     }
 
     /// Fill output buffer with challenge units.
-    pub fn fill_challenge_units(
-        &mut self,
-        label: Label,
-        output: &mut [U],
-    ) -> Result<(), PatternError> {
-        self.pattern
-            .inner_mut()
-            .ok_or(PatternError::AlreadyFinalized)?
-            .interact(Interaction::new::<U>(
-                Hierarchy::Atomic,
-                Kind::Challenge,
-                label,
-                Length::Fixed(output.len()),
-            ))?;
+    ///
+    /// # Panics
+    ///
+    /// Panics if the interaction doesn't match the expected pattern.
+    pub fn fill_challenge_units(&mut self, label: Label, output: &mut [U]) {
+        self.pattern.interact(Interaction::new::<U>(
+            Hierarchy::Atomic,
+            Kind::Challenge,
+            label,
+            Length::Fixed(output.len()),
+        ));
 
         self.duplex_sponge.squeeze_unchecked(output);
-        Ok(())
     }
 
     /// Get mutable reference to the RNG.
@@ -241,10 +236,7 @@ where
     }
 
     /// Finalize the prover and return the proof.
-    pub fn finalize_inner(
-        mut self,
-        pattern: &Arc<InteractionPattern>,
-    ) -> Result<Vec<u8>, PatternError> {
+    pub fn finalize_inner(mut self, pattern: &Arc<InteractionPattern>) -> Vec<u8> {
         // Handle the automatic protocol wrapping that PatternState::finalize() adds
         let interactions = pattern.interactions();
         let has_protocol_end = interactions
@@ -261,40 +253,69 @@ where
                 .end::<()>(Label::Protocol, Kind::Protocol, Length::None);
         }
 
-        self.pattern.finalize()?;
+        self.pattern.finalize();
         self.duplex_sponge.zeroize();
         self.rng.ds.zeroize();
-        Ok(self.narg_string)
+        self.narg_string
     }
 
     /// Abort the prover.
-    pub fn abort_inner(&mut self) -> Result<(), PatternError> {
+    pub fn abort_inner(&mut self) {
         self.pattern.abort();
-        if self.pattern.has_error() {
-            return Err(PatternError::AlreadyFinalized);
-        }
         self.duplex_sponge.zeroize();
         self.rng.ds.zeroize();
         self.narg_string.zeroize();
-        Ok(())
+    }
+
+    /// Finalize the prover and return the proof.
+    pub fn finalize(self) -> Vec<u8> {
+        let pattern = self.pattern.pattern().clone();
+        self.finalize_inner(&pattern)
+    }
+
+    pub fn message_units(&mut self, label: Label, input: &[U]) -> &mut Self {
+        self.pattern.interact(Interaction::new::<U>(
+            Hierarchy::Atomic,
+            Kind::Message,
+            label,
+            Length::Fixed(input.len()),
+        ));
+
+        self.duplex_sponge.absorb_unchecked(input);
+        let old_len = self.narg_string.len();
+        U::write(input, &mut self.narg_string)
+            .unwrap_or_else(|_| panic!("Failed to write units to narg string"));
+        self.rng.ds.absorb_unchecked(&self.narg_string[old_len..]);
+        self
+    }
+
+    pub fn message_public_units(&mut self, label: Label, input: &[U]) -> &mut Self {
+        self.pattern.interact(Interaction::new::<U>(
+            Hierarchy::Atomic,
+            Kind::Public,
+            label,
+            Length::Fixed(input.len()),
+        ));
+
+        self.duplex_sponge.absorb_unchecked(input);
+        let mut temp_buf = Vec::new();
+        U::write(input, &mut temp_buf).unwrap_or_else(|_| panic!("Failed to write public units"));
+        self.rng.ds.absorb_unchecked(&temp_buf);
+        self
+    }
+
+    pub fn challenge_units(&mut self, label: Label, output: &mut [U]) -> &mut Self {
+        self.pattern.interact(Interaction::new::<U>(
+            Hierarchy::Atomic,
+            Kind::Challenge,
+            label,
+            Length::Fixed(output.len()),
+        ));
+
+        self.duplex_sponge.squeeze_unchecked(output);
+        self
     }
 }
-
-/// [`ProverState`] is the prover state of an interactive proof (IP) system.
-/// It internally holds the **secret coins** of the prover for zero-knowledge, and
-/// has the hash function state for the verifier state.
-///
-/// Unless otherwise specified,
-/// [`ProverState`] is set to work over bytes with [`DefaultHash`] and
-/// rely on the default random number generator [`DefaultRng`].
-///
-/// # Safety
-///
-/// The prover state is meant to be private in contexts where zero-knowledge is desired.
-/// Leaking the prover state *will* leak the prover's private coins and as such it will compromise the zero-knowledge property.
-/// [`ProverState`] does not implement [`Clone`] or [`Copy`] to prevent accidental leaks.
-pub type ProverState<H = DefaultHash, U = u8, R = DefaultRng> =
-    PatternResult<ProverStateInner<H, U, R>>;
 
 impl<U, H> From<&InteractionPattern> for ProverState<H, U, DefaultRng>
 where
@@ -302,183 +323,72 @@ where
     H: DuplexSpongeInterface<U>,
 {
     fn from(pattern: &InteractionPattern) -> Self {
-        PatternResult::from_value(ProverStateInner::new(
-            Arc::new(pattern.clone()),
-            DefaultRng::default(),
-        ))
+        ProverState::new(Arc::new(pattern.clone()), DefaultRng::default())
     }
 }
 
-impl<H, U, R> ProverState<H, U, R>
-where
-    U: Unit,
-    H: DuplexSpongeInterface<U>,
-    R: RngCore + CryptoRng,
-{
-    /// Create a new prover state.
-    pub fn new(pattern: Arc<InteractionPattern>, csrng: R) -> Self {
-        PatternResult::from_value(ProverStateInner::new(pattern, csrng))
-    }
-
-    /// Add units with a label to the transcript.
-    pub fn add_units(&mut self, label: Label, input: &[U]) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            if let Err(e) = inner.add_units(label, input) {
-                self.set_error(e.into());
-            }
-        }
-        self
-    }
-
-    /// Begin a message interaction.
-    pub fn begin_message<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner
-                .pattern
-                .begin_message::<T>(label, Length::Fixed(count));
-        }
-        self
-    }
-
-    /// End a message interaction.
-    pub fn end_message<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner.pattern.end_message::<T>(label, Length::Fixed(count));
-        }
-        self
-    }
-
-    /// Begin a challenge interaction.
-    pub fn begin_challenge<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner
-                .pattern
-                .begin_challenge::<T>(label, Length::Fixed(count));
-        }
-        self
-    }
-
-    /// End a challenge interaction.
-    pub fn end_challenge<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner
-                .pattern
-                .end_challenge::<T>(label, Length::Fixed(count));
-        }
-        self
-    }
-
-    /// Begin a public interaction.
-    pub fn begin_public<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner.pattern.begin_public::<T>(label, Length::Fixed(count));
-        }
-        self
-    }
-
-    /// End a public interaction.
-    pub fn end_public<T: ?Sized>(&mut self, label: Label, count: usize) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner.pattern.end_public::<T>(label, Length::Fixed(count));
-        }
-        self
-    }
-
-    /// Begin a protocol.
-    pub fn begin_protocol(&mut self, label: Label) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner.pattern.begin_protocol(label);
-        }
-        self
-    }
-
-    /// End a protocol.
-    pub fn end_protocol(&mut self, label: Label) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner.pattern.end_protocol(label);
-        }
-        self
-    }
-
-    /// Ratchet the sponge state.
-    pub fn ratchet(&mut self) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            if let Err(e) = inner.ratchet() {
-                self.set_error(e.into());
-            }
-        }
-        self
-    }
-
-    /// Add a hint to the proof.
-    pub fn hint_bytes(&mut self, label: Label, hint: &[u8]) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            if let Err(e) = inner.hint_bytes(label, hint) {
-                self.set_error(e.into());
-            }
-        }
-        self
-    }
-
-    /// Abort the prover.
-    pub fn abort(mut self) -> Result<(), PatternError> {
-        if self.has_error() {
-            // Already has an error, just mark as finalized to prevent drop panic
-            // Access inner directly since inner_mut() returns None when there's an error
-            if let Some(inner) = self.inner.as_mut() {
-                inner.pattern.abort();
-            }
-            return Ok(());
-        }
-        
-        let inner = self.inner_mut_or_err()?;
-        inner.abort_inner()
-    }
-
-    /// Finalize the prover and return the proof.
-    pub fn finalize(self) -> Result<Vec<u8>, PatternError> {
-        let inner = self.into_result()?;
-        let pattern = inner
-            .pattern
-            .pattern()
-            .ok_or(PatternError::AlreadyFinalized)?
-            .clone();
-        inner.finalize_inner(&pattern)
-    }
-
-    /// Get mutable reference to the RNG.
-    pub fn rng(&mut self) -> Result<&mut (impl CryptoRng + RngCore), PatternError> {
-        Ok(self.inner_mut_or_err()?.rng())
-    }
-
-    /// Get the proof string (NARG string).
-    pub fn narg_string(&self) -> Result<&[u8], PatternError> {
-        Ok(self.inner_or_err()?.narg_string())
-    }
-}
-
+// Trait implementations
 impl<H, U, R> UnitTranscript<U> for ProverState<H, U, R>
 where
     U: Unit,
     H: DuplexSpongeInterface<U>,
     R: RngCore + CryptoRng,
 {
-    fn public_units(&mut self, label: Label, input: &[U]) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            if let Err(e) = inner.public_units(label, input) {
-                self.set_error(e);
-            }
-        }
+    fn message_public_units(&mut self, label: Label, input: &[U]) -> &mut Self {
+        ProverState::message_public_units(self, label, input)
+    }
+
+    fn challenge_units(&mut self, label: Label, output: &mut [U]) -> &mut Self {
+        ProverState::challenge_units(self, label, output)
+    }
+}
+
+impl<H, R> ByteTranscript for ProverState<H, u8, R>
+where
+    H: DuplexSpongeInterface<u8>,
+    R: RngCore + CryptoRng,
+{
+    fn message_bytes_unchecked(&mut self, input: &[u8]) -> &mut Self {
+        self.message_units(Label::Units, input)
+    }
+
+    fn message_public_bytes_unchecked(&mut self, input: &[u8]) -> &mut Self {
+        // Only absorb into sponge, don't write to proof
+        self.message_public_units(Label::Units, input)
+    }
+
+    fn challenge_bytes_unchecked(&mut self, output: &mut [u8]) -> &mut Self {
+        self.challenge_units(Label::Units, output)
+    }
+
+    fn message_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
+        self.begin_message::<u8>(label.clone(), Length::Fixed(input.len()));
+        self.message_bytes_unchecked(input);
+        self.end_message::<u8>(label, Length::Fixed(input.len()));
         self
     }
 
-    fn fill_challenge_units(&mut self, label: Label, output: &mut [U]) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            if let Err(e) = inner.fill_challenge_units(label, output) {
-                self.set_error(e);
-            }
-        }
+    fn challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> &mut Self {
+        self.begin_challenge::<u8>(label.clone(), Length::Fixed(output.len()));
+        self.challenge_bytes_unchecked(output);
+        self.end_challenge::<u8>(label, Length::Fixed(output.len()));
         self
+    }
+
+    fn message_public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
+        self.begin_public::<u8>(label.clone(), Length::Fixed(input.len()));
+        self.message_public_bytes_unchecked(input);
+        self.end_public::<u8>(label, Length::Fixed(input.len()));
+        self
+    }
+}
+impl<H, R> MessageWriter<u8> for ProverState<H, u8, R>
+where
+    H: DuplexSpongeInterface<u8>,
+    R: RngCore + CryptoRng,
+{
+    fn message_units(&mut self, label: Label, input: &[u8]) -> &mut Self {
+        ProverState::message_units(self, label, input)
     }
 }
 
@@ -489,11 +399,9 @@ where
     R: RngCore + CryptoRng,
 {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        if let Some(inner) = self.inner() {
-            inner.pattern.fmt(f)
-        } else {
-            write!(f, "ProverState(finalized)")
-        }
+        f.debug_struct("ProverState")
+            .field("pattern", &self.pattern)
+            .finish()
     }
 }
 
@@ -505,66 +413,17 @@ where
     R: RngCore + CryptoRng,
 {
     fn abort(&mut self) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner.pattern.abort();
-        }
+        self.pattern.abort();
         self
     }
 
     fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner.pattern.begin::<T>(label, kind, length);
-        }
+        self.pattern.begin::<T>(label, kind, length);
         self
     }
 
     fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
-        if let Some(inner) = self.inner_mut() {
-            inner.pattern.end::<T>(label, kind, length);
-        }
-        self
-    }
-}
-
-impl<H, R> BytesToUnitSerialize for ProverState<H, u8, R>
-where
-    H: DuplexSpongeInterface<u8>,
-    R: RngCore + CryptoRng,
-{
-    fn add_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
-        self.add_units(label, input)
-    }
-
-    fn message_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
-        self.begin_message::<u8>(label.clone(), input.len());
-        self.add_bytes(Label::Units, input);
-        self.end_message::<u8>(label, input.len());
-        self
-    }
-}
-
-impl<H, R> CommonUnitToBytes for ProverState<H, u8, R>
-where
-    H: DuplexSpongeInterface<u8>,
-    R: RngCore + CryptoRng,
-{
-    fn public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
-        self.begin_public::<u8>(label.clone(), input.len());
-        self.public_units(Label::Units, input);
-        self.end_public::<u8>(label, input.len());
-        self
-    }
-}
-
-impl<H, R> UnitToBytes for ProverState<H, u8, R>
-where
-    H: DuplexSpongeInterface<u8>,
-    R: RngCore + CryptoRng,
-{
-    fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> &mut Self {
-        self.begin_challenge::<u8>(label.clone(), output.len());
-        self.fill_challenge_units(Label::Units, output);
-        self.end_challenge::<u8>(label, output.len());
+        self.pattern.end::<T>(label, kind, length);
         self
     }
 }
@@ -581,96 +440,94 @@ mod tests {
     fn test_prover_state_add_units_and_rng_differs() {
         let mut pattern = PatternState::new();
         pattern.message_bytes(Label::Bytes, 4);
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
 
         pstate.message_bytes(Label::Bytes, &[1, 2, 3, 4]);
 
         let mut buf = [0u8; 8];
-        pstate.rng().unwrap().fill_bytes(&mut buf);
+        pstate.rng().fill_bytes(&mut buf);
         assert_ne!(buf, [0; 8]);
-        let _proof = pstate.finalize().expect("Failed to finalize");
+        let _proof = pstate.finalize();
     }
 
     #[test]
     fn test_prover_state_public_units_does_not_affect_narg() {
         let mut pattern = PatternState::new();
-        pattern.public_units(Label::custom("public_units"), 4);
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        pattern.message_public_units(Label::custom("public_units"), 4);
+        let pattern = pattern.finalize();
         let mut pstate: ProverState = ProverState::from(&pattern);
-
-        pstate.public_units(Label::custom("public_units"), &[1, 2, 3, 4]);
-        assert_eq!(pstate.narg_string().unwrap(), b"");
-        let _proof = pstate.finalize().expect("Failed to finalize");
+        pstate.message_public_units(Label::custom("public_units"), &[1, 2, 3, 4]);
+        assert_eq!(pstate.narg_string(), b"");
+        let _proof = pstate.finalize();
     }
 
     #[test]
     fn test_prover_state_ratcheting_changes_rng_output() {
         let mut pattern = PatternState::new();
         pattern.ratchet();
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         let mut buf1 = [0u8; 4];
-        pstate.rng().unwrap().fill_bytes(&mut buf1);
+        pstate.rng().fill_bytes(&mut buf1);
         pstate.ratchet();
         let mut buf2 = [0u8; 4];
-        pstate.rng().unwrap().fill_bytes(&mut buf2);
+        pstate.rng().fill_bytes(&mut buf2);
 
         assert_ne!(buf1, buf2);
-        let _proof = pstate.finalize().expect("Failed to finalize");
+        let _proof = pstate.finalize();
     }
 
     #[test]
     fn test_add_units_appends_to_narg_string() {
         let mut pattern = PatternState::new();
         pattern.message_units(Label::Units, 3);
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
         let mut pstate: ProverState = ProverState::from(&pattern);
 
         let input = [42, 43, 44];
 
         pstate.add_units(Label::Units, &input);
-        let proof = pstate.finalize().expect("Failed to finalize");
+        let proof = pstate.finalize();
         assert_eq!(proof, &input);
     }
 
     #[test]
+    #[should_panic(expected = "Unexpected interaction")]
     fn test_add_units_too_many_elements_should_panic() {
         let mut pattern = PatternState::new();
         pattern.message_units(Label::Units, 2);
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         pstate.add_units(Label::Units, &[1, 2, 3]);
 
-        // Should have error due to length mismatch
-        assert!(pstate.has_error());
-        assert!(pstate.finalize().is_err());
+        pstate.finalize();
     }
 
     #[test]
     fn test_ratchet_works_when_expected() {
         let mut pattern = PatternState::new();
         pattern.ratchet();
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         pstate.ratchet();
-        let _proof = pstate.finalize().expect("Failed to finalize");
+        let _proof = pstate.finalize();
     }
 
     #[test]
-    #[should_panic(expected = "UnexpectedInteraction")]
+    #[should_panic(expected = "Unexpected interaction")]
     fn test_ratchet_fails_when_not_expected() {
         let mut pattern = PatternState::new();
         pattern.message_units(Label::Units, 4);
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         pstate.ratchet();
-        let _proof = pstate.finalize().expect("Failed to finalize");
+        let _proof = pstate.finalize();
     }
 
     #[test]
@@ -679,20 +536,20 @@ mod tests {
         pattern.begin_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8));
         pattern.challenge_units(Label::Units, 8);
         pattern.end_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8));
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(&pattern);
         let mut out = [0u8; 8];
-        pstate.fill_challenge_bytes(Label::custom("fill_challenge_units"), &mut out);
+        pstate.challenge_bytes(Label::custom("fill_challenge_units"), &mut out);
         assert_ne!(out, [0u8; 8], "Challenge bytes should not be all zeros");
-        let _proof = pstate.finalize().expect("Failed to finalize");
+        let _proof = pstate.finalize();
     }
 
     #[test]
     fn test_rng_entropy_changes_with_transcript() {
         let mut pattern = PatternState::new();
         pattern.message_bytes(Label::Bytes, 3);
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut p1: ProverState = ProverState::from(&pattern);
         let mut p2: ProverState = ProverState::from(&pattern);
@@ -700,13 +557,13 @@ mod tests {
         let mut a = [0u8; 16];
         let mut b = [0u8; 16];
 
-        p1.rng().unwrap().fill_bytes(&mut a);
+        p1.rng().fill_bytes(&mut a);
         p2.message_bytes(Label::Bytes, &[1, 2, 3]);
-        p2.rng().unwrap().fill_bytes(&mut b);
+        p2.rng().fill_bytes(&mut b);
 
         assert_ne!(a, b);
-        p1.abort().expect("Failed to abort");
-        p2.abort().expect("Failed to abort");
+        p1.abort();
+        p2.abort();
     }
 
     #[test]
@@ -714,76 +571,65 @@ mod tests {
         let mut pattern = PatternState::new();
         pattern.message_units(Label::Units, 2);
         pattern.message_units(Label::Units, 3);
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut p: ProverState = ProverState::from(&pattern);
         p.add_units(Label::Units, &[10, 11]);
         p.add_units(Label::Units, &[20, 21, 22]);
-        assert_eq!(
-            p.finalize().expect("Failed to finalize"),
-            &[10, 11, 20, 21, 22]
-        );
+        assert_eq!(p.finalize(), &[10, 11, 20, 21, 22]);
     }
 
     #[test]
     fn test_narg_string_round_trip_check() {
         let mut pattern = PatternState::new();
         pattern.message_units(Label::Units, 5);
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut p: ProverState = ProverState::from(&pattern);
         let msg = b"zkp42";
         p.add_units(Label::Units, msg);
-        assert_eq!(p.finalize().expect("Failed to finalize"), msg);
+        assert_eq!(p.finalize(), msg);
     }
 
     #[test]
     fn test_hint_bytes_appends_hint_length_and_data() {
         let mut pattern = PatternState::new();
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut prover: ProverState = ProverState::from(&pattern);
         let hint = b"abc123";
         prover.hint_bytes(Label::custom("hint_bytes"), hint);
         let expected = [6, 0, 0, 0, b'a', b'b', b'c', b'1', b'2', b'3'];
-        assert_eq!(prover.finalize().expect("Failed to finalize"), &expected);
+        assert_eq!(prover.finalize(), &expected);
     }
 
     #[test]
     fn test_hint_bytes_empty_hint_is_encoded_correctly() {
         let mut pattern = PatternState::new();
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let mut prover: ProverState = ProverState::from(&pattern);
         prover.hint_bytes(Label::custom("hint_bytes"), b"");
-        assert_eq!(
-            prover.finalize().expect("Failed to finalize"),
-            &[0, 0, 0, 0]
-        );
+        assert_eq!(prover.finalize(), &[0, 0, 0, 0]);
     }
 
     #[test]
+    #[should_panic(expected = "No more expected interactions")]
     fn test_hint_bytes_fails_if_hint_op_missing() {
-        let pattern = PatternState::new()
-            .finalize()
-            .expect("Failed to finalize pattern");
+        let pattern = PatternState::new().finalize();
 
         let mut prover: ProverState = ProverState::from(&pattern);
         prover.hint_bytes(Label::custom("hint_bytes"), b"some_hint");
-        assert!(
-            prover.has_error(),
-            "Expected error when hint bytes interaction is missing"
-        );
-        let _ = prover.abort();
+        prover.finalize();
     }
 
     #[test]
     fn test_hint_bytes_is_deterministic() {
         let mut pattern = PatternState::new();
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
-        let pattern = pattern.finalize().expect("Failed to finalize pattern");
+        let pattern = pattern.finalize();
 
         let hint = b"zkproof_hint";
         let mut prover1: ProverState = ProverState::from(&pattern);
@@ -797,7 +643,7 @@ mod tests {
             prover2.narg_string(),
             "Encoding should be deterministic"
         );
-        let _proof1 = prover1.finalize().expect("Failed to finalize");
-        let _proof2 = prover2.finalize().expect("Failed to finalize");
+        let _proof1 = prover1.finalize();
+        let _proof2 = prover2.finalize();
     }
 }

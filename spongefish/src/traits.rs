@@ -1,58 +1,105 @@
 use crate::{
-    pattern::{Label, PatternError},
+    pattern::{Label, Length, Pattern},
     Unit,
 };
 
-/// Absorbing and squeezing native elements from the sponge.
+/// Core transcript operations for generic units.
+///
+/// Provides operations that both prover and verifier need:
+/// - Absorbing public parameters
+/// - Generating challenges
 pub trait UnitTranscript<U: Unit> {
-    fn public_units(&mut self, label: Label, input: &[U]) -> &mut Self;
-    fn fill_challenge_units(&mut self, label: Label, output: &mut [U]) -> &mut Self;
+    /// Absorb public units into transcript (not in proof).
+    fn message_public_units(&mut self, label: Label, input: &[U]) -> &mut Self;
+
+    /// Generate challenge units from transcript.
+    fn challenge_units(&mut self, label: Label, output: &mut [U]) -> &mut Self;
 }
 
-/// Absorbing bytes from the sponge, without reading or writing them into the protocol transcript.
-pub trait CommonUnitToBytes {
-    fn public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self;
-}
+/// Transcript operations for bytes (when U = u8).
+///
+/// Provides both low-level and high-level APIs for byte operations.
+/// Most users should use the high-level methods.
+pub trait ByteTranscript: Pattern {
+    // ========================================================================
+    // REQUIRED: Low-level operations (implementors provide these)
+    // ========================================================================
 
-/// Squeezing bytes from the sponge.
-pub trait UnitToBytes {
-    fn fill_challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> &mut Self;
+    /// Add bytes to transcript without pattern management.
+    ///
+    /// **⚠️ Low-level API**: Does not call `begin_message`/`end_message`.
+    fn message_bytes_unchecked(&mut self, input: &[u8]) -> &mut Self;
 
-    fn challenge_bytes<const N: usize>(&mut self, label: Label) -> [u8; N] {
+    /// Generate challenge bytes without pattern management.
+    ///
+    /// **⚠️ Low-level API**: Does not call `begin_challenge`/`end_challenge`.
+    fn challenge_bytes_unchecked(&mut self, output: &mut [u8]) -> &mut Self;
+
+    // ========================================================================
+    // PROVIDED: High-level operations (automatic pattern management)
+    // ========================================================================
+
+    /// Add bytes to transcript with automatic pattern management.
+    fn message_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
+        self.begin_message::<u8>(label.clone(), Length::Fixed(input.len()));
+        self.message_bytes_unchecked(input);
+        self.end_message::<u8>(label, Length::Fixed(input.len()));
+        self
+    }
+
+    /// Generate challenge bytes with automatic pattern management.
+    fn challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> &mut Self {
+        self.begin_challenge::<u8>(label.clone(), Length::Fixed(output.len()));
+        self.challenge_bytes_unchecked(output);
+        self.end_challenge::<u8>(label, Length::Fixed(output.len()));
+        self
+    }
+
+    /// Absorb public bytes with automatic pattern management.
+    fn message_public_bytes_unchecked(&mut self, input: &[u8]) -> &mut Self;
+
+    fn message_public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
+        self.begin_public::<u8>(label.clone(), Length::Fixed(input.len()));
+        self.message_public_bytes_unchecked(input); // ✅ Use the public-specific method
+        self.end_public::<u8>(label, Length::Fixed(input.len()));
+        self
+    }
+
+    /// Convenience method for fixed-size challenges.
+    ///
+    /// # Example
+    /// ```ignore
+    /// let challenge: [u8; 32] = prover.challenge_bytes_array(Label::custom("chal"));
+    /// ```
+    fn challenge_bytes_array<const N: usize>(&mut self, label: Label) -> [u8; N] {
         let mut output = [0u8; N];
-        self.fill_challenge_bytes(label, &mut output);
+        self.challenge_bytes(label, &mut output);
         output
     }
 }
 
-/// A trait for absorbing and squeezing bytes from a sponge.
-pub trait ByteTranscript: CommonUnitToBytes + UnitToBytes {}
+/// Verifier-specific byte operations.
+pub trait VerifierByteTranscript: ByteTranscript {
+    /// Read bytes from proof without pattern management.
+    ///
+    /// **⚠️ Low-level API**: Does not call `begin_message`/`end_message`.
+    fn read_message_bytes_unchecked(&mut self, output: &mut [u8]) -> &mut Self;
 
-pub trait BytesToUnitDeserialize {
-    fn fill_next_bytes(
-        &mut self,
-        label: Label,
-        input: &mut [u8],
-    ) -> &mut Self;
-
-    fn next_bytes<const N: usize>(&mut self, label: Label) -> [u8; N] {
-        let mut input = [0u8; N];
-        self.fill_next_bytes(label, &mut input);
-        input
+    /// Read bytes from proof with automatic pattern management.
+    fn read_message_bytes(&mut self, label: Label, output: &mut [u8]) -> &mut Self {
+        self.begin_message::<u8>(label.clone(), Length::Fixed(output.len()));
+        self.read_message_bytes_unchecked(output);
+        self.end_message::<u8>(label, Length::Fixed(output.len()));
+        self
     }
 }
 
-pub trait BytesToUnitSerialize {
-    fn add_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self;
-    fn message_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self;
+/// Writing messages to transcript.
+pub trait MessageWriter<U: Unit> {
+    fn message_units(&mut self, label: Label, input: &[U]) -> &mut Self;
 }
 
-/// Methods for adding bytes to the [`DomainSeparator`](crate::DomainSeparator), properly counting group elements.
-pub trait ByteDomainSeparator {
-    #[must_use]
-    fn add_bytes(self, count: usize, label: &str) -> Self;
-    #[must_use]
-    fn hint(self, label: &str) -> Self;
-    #[must_use]
-    fn challenge_bytes(self, count: usize, label: &str) -> Self;
+/// Reading messages from proof.
+pub trait MessageReader<U: Unit> {
+    fn read_message_units(&mut self, label: Label, output: &mut [U]) -> &mut Self;
 }

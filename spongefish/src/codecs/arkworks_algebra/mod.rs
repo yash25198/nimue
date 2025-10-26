@@ -119,6 +119,7 @@
 //!
 /// domain separator utilities.
 mod domain_separator;
+mod traits;
 /// Add public elements (field or group elements) to the protocol transcript.
 mod verifier_messages;
 
@@ -127,17 +128,16 @@ mod deserialize;
 /// Prover's utilities for encoding into a transcript.
 mod prover_messages;
 
-mod ext;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-pub use ext::{
-    ProverFieldMessageExt, ProverGroupMessageExt, VerifierFieldMessageExt, VerifierGroupMessageExt,
+pub use traits::{
+    FieldTranscript, GroupTranscript, VerifierFieldTranscript, VerifierGroupTranscript,
 };
 
 pub use crate::{
     duplex_sponge::Unit,
+    pattern::{Label, Pattern, PatternError},
     traits::{
-        BytesToUnitDeserialize, BytesToUnitSerialize, CommonUnitToBytes, UnitToBytes,
-        UnitTranscript,
+        ByteTranscript, MessageReader, MessageWriter, UnitTranscript, VerifierByteTranscript,
     },
     DuplexSpongeInterface, ProofError, ProofResult, ProverState, VerifierState,
 };

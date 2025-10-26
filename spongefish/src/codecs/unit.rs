@@ -1,14 +1,11 @@
-use crate::{
-    pattern::{Label, PatternError},
-    Unit,
-};
+use crate::{pattern::Label, Unit};
 
 pub trait Pattern {
     type Unit: Unit;
 
     fn ratchet(&mut self) -> &mut Self;
-    fn public_unit(&mut self, label: Label) -> &mut Self;
-    fn public_units(&mut self, label: Label, size: usize) -> &mut Self;
+    fn message_public_unit(&mut self, label: Label) -> &mut Self;
+    fn message_public_units(&mut self, label: Label, size: usize) -> &mut Self;
     fn message_unit(&mut self, label: Label) -> &mut Self;
     fn message_units(&mut self, label: Label, size: usize) -> &mut Self;
     fn challenge_unit(&mut self, label: Label) -> &mut Self;
