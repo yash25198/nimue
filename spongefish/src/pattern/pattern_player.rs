@@ -118,12 +118,18 @@ impl PatternPlayerInner {
         self.finalized = true;
     }
 
-    /// Finalize the sequence of interactions.
+    /// Check if the pattern player is finalized.
+    #[must_use]
+    pub fn is_finalized(&self) -> bool {
+        self.finalized
+    }
+
+    /// Finalize the pattern player.
     ///
     /// # Panics
     ///
     /// Panics if there are unfinished interactions.
-    pub fn finalize_inner(&mut self) {
+    pub fn finalize(mut self) {
         if self.position > self.pattern.interactions().len() {
             panic!(
                 "Pattern position {} exceeds pattern length {}",
@@ -142,21 +148,6 @@ impl PatternPlayerInner {
         }
 
         self.finalized = true;
-    }
-
-    /// Check if the pattern player is finalized.
-    #[must_use]
-    pub fn is_finalized(&self) -> bool {
-        self.finalized
-    }
-
-    /// Finalize the pattern player.
-    ///
-    /// # Panics
-    ///
-    /// Panics if there are unfinished interactions.
-    pub fn finalize(mut self) {
-        self.finalize_inner();
     }
 }
 

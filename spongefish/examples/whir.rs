@@ -22,9 +22,7 @@ use ark_ff::UniformRand;
 use rand::rngs::OsRng;
 use spongefish::{
     codecs::{
-        arkworks_algebra::{
-            FieldPattern, ProverFieldMessageExt, UnitToField, VerifierFieldMessageExt,
-        },
+        arkworks_algebra::{FieldPattern, FieldTranscript, VerifierFieldTranscript},
         unit::Pattern as _,
     },
     pattern::{Label, Pattern, PatternState},
@@ -141,10 +139,7 @@ type Commitment = Fr;
 // WHIR Interaction Pattern
 // ============================================================================
 
-fn whir_pattern(num_vars: usize) -> PatternState
-where
-    PatternState: FieldPattern,
-{
+fn whir_pattern(num_vars: usize) -> PatternState {
     let mut pattern = PatternState::new();
 
     pattern
@@ -187,14 +182,14 @@ fn prove_opening<R>(
 ) -> ProofResult<()>
 where
     R: rand::RngCore + rand::CryptoRng,
-    ProverState<DefaultHash, u8, R>: ProverFieldMessageExt<Fr> + UnitToField<Fr>,
+    ProverState<DefaultHash, u8, R>: FieldTranscript<Fr>,
 {
     // Send commitment
     prover.message_scalars(Label::from("commitment"), &[commitment]);
 
     // Get evaluation point as Fiat-Shamir challenge (after commitment!)
     let mut eval_point = vec![Fr::default(); poly.num_vars];
-    prover.fill_challenge_scalars(Label::from("eval_point"), &mut eval_point);
+    prover.challenge_scalars(Label::from("eval_point"), &mut eval_point);
 
     println!("  Prover received challenge point from transcript");
 
@@ -217,7 +212,7 @@ where
 
         // Get folding challenge
         let mut challenge_buf = [Fr::default(); 1];
-        prover.fill_challenge_scalars(
+        prover.challenge_scalars(
             Label::from(format!("round_{}_challenge", round)),
             &mut challenge_buf,
         );
@@ -247,22 +242,22 @@ where
 
 fn verify_opening(verifier: &mut VerifierState<DefaultHash, u8>, num_vars: usize) -> ProofResult<()>
 where
-    for<'a> VerifierState<'a, DefaultHash, u8>: VerifierFieldMessageExt<Fr> + UnitToField<Fr>,
+    for<'a> VerifierState<'a, DefaultHash, u8>: VerifierFieldTranscript<Fr>,
 {
     // Read commitment
     let mut commitment_buf = [Fr::default(); 1];
-    verifier.fill_message_scalars(Label::from("commitment"), &mut commitment_buf);
+    verifier.read_message_scalars(Label::from("commitment"), &mut commitment_buf)?;
     let _commitment = commitment_buf[0];
 
     // Generate evaluation point as challenge (after seeing commitment!)
     let mut eval_point = vec![Fr::default(); num_vars];
-    verifier.fill_challenge_scalars(Label::from("eval_point"), &mut eval_point);
+    verifier.challenge_scalars(Label::from("eval_point"), &mut eval_point);
 
     println!("  Verifier generated challenge point from transcript");
 
     // Read claimed evaluation and ratchet
     let mut claimed_eval_buf = [Fr::default(); 1];
-    verifier.fill_message_scalars(Label::from("claimed_eval"), &mut claimed_eval_buf);
+    verifier.read_message_scalars(Label::from("claimed_eval"), &mut claimed_eval_buf)?;
     verifier.ratchet();
     let mut expected_eval = claimed_eval_buf[0];
 
@@ -270,15 +265,15 @@ where
     for round in 0..num_vars {
         // Read round value
         let mut round_value_buf = [Fr::default(); 1];
-        verifier.fill_message_scalars(
+        verifier.read_message_scalars(
             Label::from(format!("round_{}_value", round)),
             &mut round_value_buf,
-        );
+        )?;
         let round_value = round_value_buf[0];
 
         // Generate challenge
         let mut challenge_buf = [Fr::default(); 1];
-        verifier.fill_challenge_scalars(
+        verifier.challenge_scalars(
             Label::from(format!("round_{}_challenge", round)),
             &mut challenge_buf,
         );
@@ -287,7 +282,7 @@ where
         // Read authentication
         let mut auth_buf = [Fr::default(); 1];
         verifier
-            .fill_message_scalars(Label::from(format!("round_{}_auth", round)), &mut auth_buf);
+            .read_message_scalars(Label::from(format!("round_{}_auth", round)), &mut auth_buf)?;
         let auth_value = auth_buf[0];
 
         // Verify consistency (simplified check)
@@ -323,11 +318,7 @@ fn main() {
     println!("✓ Random polynomial created ({} evaluations)\n", poly_size);
 
     // Step 2: Create and finalize pattern
-    let pattern = Arc::new(
-        whir_pattern(num_vars)
-            .finalize()
-            .expect("Failed to finalize pattern"),
-    );
+    let pattern = Arc::new(whir_pattern(num_vars).finalize());
     println!("✓ WHIR interaction pattern created\n");
 
     // Step 3: Commit to polynomial
@@ -337,7 +328,7 @@ fn main() {
     // Step 4: Prover generates opening proof
     // NOTE: eval_point is now generated via Fiat-Shamir INSIDE the prove function!
     let proof = {
-        let mut prover = ProverState::new(pattern.clone(), rng);
+        let mut prover = ProverState::new((*pattern).clone(), rng);
 
         prover.begin_protocol(Label::from("whir"));
 
@@ -345,14 +336,14 @@ fn main() {
 
         prover.end_protocol(Label::from("whir"));
 
-        prover.finalize().expect("Prover finalize failed")
+        prover.finalize()
     };
 
     println!("✓ Opening proof generated ({} bytes)\n", proof.len());
 
     // Step 5: Verifier checks proof
     let result = {
-        let mut verifier = VerifierState::new(pattern.clone(), &proof);
+        let mut verifier = VerifierState::new((*pattern).clone(), &proof);
 
         verifier.begin_protocol(Label::from("whir"));
 

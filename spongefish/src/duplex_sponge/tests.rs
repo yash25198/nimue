@@ -31,7 +31,7 @@ fn test_prover_rng_basic() {
     assert_ne!(random_u64, 0);
     assert!(random_bytes.iter().any(|&x| x != random_bytes[0]));
 
-    prover_state.abort_inner();
+    prover_state.abort();
 }
 
 #[test]
@@ -71,7 +71,6 @@ fn test_invalid_pattern_sequence() {
 }
 
 #[test]
-#[ignore = "TODO: Fix pattern mismatch - test needs to properly match begin/end structure"]
 fn test_deterministic() {
     let mut pattern = PatternState::new();
     pattern.message_bytes(Label::Bytes, 3);
@@ -85,28 +84,45 @@ fn test_deterministic() {
     let mut second = [0u8; 3];
 
     // Read through the begin/end structure
-    first_verifier.begin::<u8>(Label::Bytes, crate::pattern::Kind::Message, Length::Fixed(3));
+    first_verifier.begin::<u8>(
+        Label::Bytes,
+        crate::pattern::Kind::Message,
+        Length::Fixed(3),
+    );
     first_verifier
         .fill_next_units(Label::Units, &mut first)
         .unwrap();
-    first_verifier.end::<u8>(Label::Bytes, crate::pattern::Kind::Message, Length::Fixed(3));
+    first_verifier.end::<u8>(
+        Label::Bytes,
+        crate::pattern::Kind::Message,
+        Length::Fixed(3),
+    );
 
-    second_verifier.begin::<u8>(Label::Bytes, crate::pattern::Kind::Message, Length::Fixed(3));
+    second_verifier.begin::<u8>(
+        Label::Bytes,
+        crate::pattern::Kind::Message,
+        Length::Fixed(3),
+    );
     second_verifier
         .fill_next_units(Label::Units, &mut second)
         .unwrap();
-    second_verifier.end::<u8>(Label::Bytes, crate::pattern::Kind::Message, Length::Fixed(3));
+    second_verifier.end::<u8>(
+        Label::Bytes,
+        crate::pattern::Kind::Message,
+        Length::Fixed(3),
+    );
 
     let mut first_chal = [0u8; 16];
     let mut second_chal = [0u8; 16];
 
-    first_verifier.challenge_units(Label::custom("chal"), &mut first_chal);
-    second_verifier.challenge_units(Label::custom("chal"), &mut second_chal);
+    // Use challenge_bytes to match the pattern structure (which creates begin/units/end)
+    first_verifier.challenge_bytes(Label::custom("chal"), &mut first_chal);
+    second_verifier.challenge_bytes(Label::custom("chal"), &mut second_chal);
 
     assert_eq!(first_chal, second_chal);
 
-    first_verifier.finalize();
-    second_verifier.finalize();
+    let _ = first_verifier.finalize();
+    let _ = second_verifier.finalize();
 }
 
 #[test]
@@ -120,7 +136,9 @@ fn test_statistics() {
     let mut verifier_state = VerifierState::<Keccak>::new(pattern, b"seed");
     // Read the message bytes
     let mut msg = [0u8; 4];
-    verifier_state.read_message_units(Label::Bytes, &mut msg).unwrap();
+    verifier_state
+        .read_message_units(Label::Bytes, &mut msg)
+        .unwrap();
     verifier_state.ratchet();
 
     let mut output = [0u8; 2048];
@@ -176,7 +194,7 @@ fn test_verifier_empty_proof() {
     let result = verifier.read_message_units(Label::Bytes, &mut bytes);
     assert!(result.is_err());
     // Manually abort and forget to avoid panic on drop
-    verifier.abort_inner();
+    verifier.abort();
     std::mem::forget(verifier);
 }
 

@@ -7,8 +7,7 @@ use ark_ff::{Field, Fp, FpConfig, PrimeField};
 
 use super::traits::{VerifierFieldTranscript, VerifierGroupTranscript};
 use crate::{
-    pattern::Label, DuplexSpongeInterface, ProofResult,
-    VerifierByteTranscript, VerifierState,
+    pattern::Label, DuplexSpongeInterface, ProofResult, VerifierByteTranscript, VerifierState,
 };
 
 // ============================================================================

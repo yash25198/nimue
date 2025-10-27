@@ -3,10 +3,9 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
-use super::{interaction::Hierarchy, Interaction, Kind};
-
 #[cfg(test)]
 use super::Label;
+use super::{interaction::Hierarchy, Interaction, Kind};
 
 /// Abstract transcript containing prover-verifier interactions
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]

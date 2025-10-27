@@ -4,7 +4,9 @@ use rand::{CryptoRng, RngCore};
 
 use super::traits::{FieldTranscript, GroupTranscript};
 use crate::{
-    codecs::bytes_uniform_modp, pattern::Label, ByteTranscript, DuplexSpongeInterface, ProverState,
+    codecs::bytes_uniform_modp,
+    pattern::{Label, Pattern},
+    ByteTranscript, DuplexSpongeInterface, ProverState,
 };
 
 // ============================================================================
@@ -36,8 +38,28 @@ where
             f.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        // Only absorb into sponge, don't write to proof
-        self.message_public_units(Label::BaseFieldCoefficients, &buf)
+        // Pattern expects message_bytes structure: Begin Message -> Message units -> End Message
+        // Manually create Message interaction and absorb (but don't write to proof)
+        self.begin_message::<u8>(
+            Label::BaseFieldCoefficients,
+            crate::pattern::Length::Fixed(buf.len()),
+        );
+
+        use crate::pattern::{Hierarchy, Interaction, Kind, Length};
+        self.pattern.interact(Interaction::new::<u8>(
+            Hierarchy::Atomic,
+            Kind::Message,
+            Label::Units,
+            Length::Fixed(buf.len()),
+        ));
+        self.duplex_sponge.absorb_unchecked(&buf);
+        self.rng.ds.absorb_unchecked(&buf);
+
+        self.end_message::<u8>(
+            Label::BaseFieldCoefficients,
+            crate::pattern::Length::Fixed(buf.len()),
+        );
+        self
     }
 
     fn challenge_scalars_unchecked(&mut self, output: &mut [F]) -> &mut Self {
@@ -109,8 +131,33 @@ where
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        // Only absorb into sponge, don't write to proof
-        self.message_public_units(Label::BaseFieldCoefficients, &flattened)
+        // Pattern expects message_bytes structure: Begin Message -> Message units -> End Message
+        // Manually create Message interaction and absorb (but don't write to proof)
+        self.begin_message::<Fp<C, N>>(
+            Label::BaseFieldCoefficients,
+            crate::pattern::Length::Fixed(flattened.len()),
+        );
+
+        use crate::{
+            pattern::{Hierarchy, Interaction, Kind, Length},
+            Unit,
+        };
+        self.pattern.interact(Interaction::new::<Fp<C, N>>(
+            Hierarchy::Atomic,
+            Kind::Message,
+            Label::Units,
+            Length::Fixed(flattened.len()),
+        ));
+        self.duplex_sponge.absorb_unchecked(&flattened);
+        let mut temp_buf = Vec::new();
+        Fp::<C, N>::write(&flattened, &mut temp_buf).unwrap();
+        self.rng.ds.absorb_unchecked(&temp_buf);
+
+        self.end_message::<Fp<C, N>>(
+            Label::BaseFieldCoefficients,
+            crate::pattern::Length::Fixed(flattened.len()),
+        );
+        self
     }
 
     fn challenge_scalars_unchecked(&mut self, output: &mut [F]) -> &mut Self {
@@ -221,9 +268,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        codecs::{
-            arkworks_algebra::{FieldPattern, GroupPattern, VerifierFieldTranscript},
-        },
+        codecs::arkworks_algebra::{FieldPattern, GroupPattern, VerifierFieldTranscript},
         pattern::PatternState,
         DefaultHash,
     };

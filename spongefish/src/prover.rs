@@ -237,7 +237,9 @@ where
     }
 
     /// Finalize the prover and return the proof.
-    pub fn finalize_inner(mut self, pattern: &Arc<InteractionPattern>) -> Vec<u8> {
+    pub fn finalize(mut self) -> Vec<u8> {
+        let pattern = self.pattern.pattern().clone();
+        
         // Handle the automatic protocol wrapping that PatternState::finalize() adds
         let interactions = pattern.interactions();
         let has_protocol_end = interactions
@@ -258,20 +260,6 @@ where
         self.duplex_sponge.zeroize();
         self.rng.ds.zeroize();
         self.narg_string
-    }
-
-    /// Abort the prover.
-    pub fn abort_inner(&mut self) {
-        self.pattern.abort();
-        self.duplex_sponge.zeroize();
-        self.rng.ds.zeroize();
-        self.narg_string.zeroize();
-    }
-
-    /// Finalize the prover and return the proof.
-    pub fn finalize(self) -> Vec<u8> {
-        let pattern = self.pattern.pattern().clone();
-        self.finalize_inner(&pattern)
     }
 
     pub fn message_units(&mut self, label: Label, input: &[U]) -> &mut Self {

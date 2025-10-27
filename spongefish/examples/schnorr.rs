@@ -25,15 +25,15 @@ use spongefish::{
         },
         unit::Pattern as _,
     },
-    pattern::{InteractionPattern, Label, PatternState},
+    pattern::{Common, InteractionPattern, Label, PatternState},
     DefaultHash, ProverState, VerifierError, VerifierState,
 };
-
 
 /// Create the interaction pattern for Schnorr protocol
 fn schnorr_pattern<G: CurveGroup>() -> InteractionPattern {
     let mut pattern = PatternState::new();
     pattern
+        .begin_protocol(Label::from("Schnorr"))
         // Public params ARE in pattern (affect challenges)
         .message_public_points::<G>(Label::from("generator"), 1)
         .message_public_points::<G>(Label::from("public_key"), 1)
@@ -42,6 +42,7 @@ fn schnorr_pattern<G: CurveGroup>() -> InteractionPattern {
         .message_points::<G>(Label::from("commitment"), 1)
         .challenge_scalars::<G::ScalarField>(Label::from("challenge"), 1)
         .message_scalars::<G::ScalarField>(Label::from("response"), 1);
+    pattern.end_protocol(Label::from("Schnorr"));
 
     pattern.finalize()
 }
@@ -143,10 +144,12 @@ fn main() {
 
     // Step 3: Prover generates proof
     let proof = {
-        let mut prover = ProverState::new(pattern.clone(), OsRng);
+        let mut prover = ProverState::new((*pattern).clone(), OsRng);
 
         // Generate and send proof (includes public params inside)
+        prover.begin_protocol(Label::from("Schnorr"));
         prove(&mut prover, P, X, x);
+        prover.end_protocol(Label::from("Schnorr"));
 
         prover.finalize()
     };
@@ -156,10 +159,12 @@ fn main() {
 
     // Step 4: Verifier checks proof
     let result = {
-        let mut verifier = VerifierState::new(pattern.clone(), &proof);
+        let mut verifier = VerifierState::new((*pattern).clone(), &proof);
 
         // Verify the proof (includes public params inside)
+        verifier.begin_protocol(Label::from("Schnorr"));
         let verify_result = verify(&mut verifier, P, X);
+        verifier.end_protocol(Label::from("Schnorr"));
 
         // Check for verification equation failure first
         if let Err(e) = verify_result {
