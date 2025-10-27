@@ -5,7 +5,6 @@ use rand::{CryptoRng, RngCore};
 use super::traits::{FieldTranscript, GroupTranscript};
 use crate::{
     codecs::bytes_uniform_modp, pattern::Label, ByteTranscript, DuplexSpongeInterface, ProverState,
-    UnitTranscript,
 };
 
 // ============================================================================
@@ -215,8 +214,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use ark_curve25519::EdwardsProjective as G;
     use ark_ec::PrimeGroup;
     use ark_ff::{Fp64, MontBackend, MontConfig, UniformRand};
@@ -226,9 +223,8 @@ mod tests {
     use crate::{
         codecs::{
             arkworks_algebra::{FieldPattern, GroupPattern, VerifierFieldTranscript},
-            bytes::Pattern as BytesPattern,
         },
-        pattern::{Pattern as PatternTrait, PatternState},
+        pattern::PatternState,
         DefaultHash,
     };
 
@@ -250,9 +246,9 @@ mod tests {
 
         let mut pattern = PatternState::new();
         pattern.message_scalars::<BabyBear>(Label::custom("scalars"), 3);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         prover.message_scalars(Label::custom("scalars"), &scalars);
 
         let mut expected_bytes = Vec::new();
@@ -270,9 +266,9 @@ mod tests {
 
         let mut pattern = PatternState::new();
         pattern.message_points::<G>(Label::custom("point"), 1);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         prover.message_points(Label::custom("point"), &[point]);
 
         let mut expected = Vec::new();
@@ -286,9 +282,9 @@ mod tests {
     fn test_challenge_scalars() {
         let mut pattern = PatternState::new();
         pattern.challenge_scalars::<BabyBear>(Label::custom("challenge"), 2);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         let mut output = [BabyBear::from(0); 2];
         prover.challenge_scalars(Label::custom("challenge"), &mut output);
         assert_ne!(output[0], BabyBear::from(0));
@@ -307,7 +303,7 @@ mod tests {
         ];
 
         // Empty pattern - should panic
-        let pattern = Arc::new(PatternState::new().finalize());
+        let pattern = PatternState::new().finalize();
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
         prover.message_scalars(Label::custom("scalars"), &scalars);
@@ -319,7 +315,7 @@ mod tests {
         let point = G::generator();
 
         // Empty pattern - should panic
-        let pattern = Arc::new(PatternState::new().finalize());
+        let pattern = PatternState::new().finalize();
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
         prover.message_points(Label::custom("point"), &[point]);
@@ -331,7 +327,7 @@ mod tests {
         let input = b"hello world!";
 
         // Empty pattern - should panic
-        let pattern = Arc::new(PatternState::new().finalize());
+        let pattern = PatternState::new().finalize();
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
         prover.message_bytes(Label::Bytes, input);
@@ -345,15 +341,15 @@ mod tests {
         // Create pattern
         let mut pattern = PatternState::new();
         pattern.message_scalars::<BabyBear>(Label::custom("data"), 2);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
         // Prover
-        let mut prover = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         prover.message_scalars(Label::custom("data"), &scalars);
         let proof = prover.finalize();
 
         // Verifier
-        let mut verifier = crate::VerifierState::<DefaultHash>::new(pattern, &proof);
+        let mut verifier = crate::VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut received = [BabyBear::from(0u64); 2];
         verifier
             .read_message_scalars(Label::custom("data"), &mut received)

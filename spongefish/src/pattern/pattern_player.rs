@@ -206,7 +206,7 @@ mod tests {
     #[test]
     fn test_pattern_player_new() {
         let pattern = PatternState::new().finalize();
-        let mut player = PatternPlayer::new(Arc::new(pattern));
+        let player = PatternPlayer::new(Arc::new(pattern));
         // Just test that creation succeeds
         // PatternState::new().finalize() creates an empty pattern with just protocol begin/end
         // We can finalize immediately

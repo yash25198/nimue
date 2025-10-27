@@ -1,11 +1,15 @@
 use core::fmt::Display;
+use std::sync::Arc;
 
 use thiserror::Error;
 
-use super::{interaction::Hierarchy, Interaction, Kind, Label};
+use super::{interaction::Hierarchy, Interaction, Kind};
+
+#[cfg(test)]
+use super::Label;
 
 /// Abstract transcript containing prover-verifier interactions
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, Default)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub struct InteractionPattern {
     interactions: Vec<Interaction>,
 }
@@ -63,6 +67,29 @@ impl InteractionPattern {
         result.into()
     }
 
+    /// Finalize the pattern by wrapping it in an Arc.
+    ///
+    /// This method provides a convenient way to convert an InteractionPattern
+    /// into an Arc<InteractionPattern> for use with ProverState and VerifierState.
+    #[must_use]
+    pub fn finalize(self) -> Arc<Self> {
+        Arc::new(self)
+    }
+
+    /// Convert this pattern to a ProverState.
+    ///
+    /// This method provides a convenient way to create a ProverState directly
+    /// from an InteractionPattern without manually wrapping it in an Arc.
+    #[must_use]
+    pub fn to_prover_state<H, U, R>(self, rng: R) -> crate::ProverState<H, U, R>
+    where
+        U: crate::duplex_sponge::Unit,
+        H: crate::duplex_sponge::DuplexSpongeInterface<U>,
+        R: rand::RngCore + rand::CryptoRng,
+    {
+        crate::ProverState::new(self, rng)
+    }
+
     /// Validate the transcript.
     ///
     /// A valid transcript has:
@@ -114,6 +141,12 @@ impl InteractionPattern {
             });
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Debug for InteractionPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
     }
 }
 

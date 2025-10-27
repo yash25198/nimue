@@ -7,7 +7,7 @@ use ark_ff::{Field, Fp, FpConfig, PrimeField};
 
 use super::traits::{VerifierFieldTranscript, VerifierGroupTranscript};
 use crate::{
-    pattern::Label, ByteTranscript, DuplexSpongeInterface, ProofError, ProofResult,
+    pattern::Label, DuplexSpongeInterface, ProofResult,
     VerifierByteTranscript, VerifierState,
 };
 
@@ -161,11 +161,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use ark_bls12_381::{Fr as BlsFr, G1Projective};
-    use ark_curve25519::{EdwardsProjective, Fr as Curve25519Fr};
-    use ark_ff::{Field, Fp64, MontBackend, MontConfig, UniformRand};
+    use ark_curve25519::EdwardsProjective;
+    use ark_ff::{Fp64, MontBackend, MontConfig, UniformRand};
 
     use super::*;
     use crate::{
@@ -189,9 +187,9 @@ mod tests {
 
         let mut pattern = PatternState::new();
         pattern.message_scalars::<BlsFr>(Label::custom("data"), 2);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut prover = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         prover.message_scalars(Label::custom("data"), &scalars);
         let proof = prover.finalize();
 
@@ -215,9 +213,9 @@ mod tests {
 
         let mut pattern = PatternState::new();
         pattern.message_points::<EdwardsProjective>(Label::custom("commits"), 2);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut prover = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         prover.message_points(Label::custom("commits"), &points);
         let proof = prover.finalize();
 
@@ -238,9 +236,9 @@ mod tests {
 
         let mut pattern = PatternState::new();
         pattern.message_points::<G1Projective>(Label::custom("commits"), 2);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut prover = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         prover.message_points(Label::custom("commits"), &points);
         let proof = prover.finalize();
 

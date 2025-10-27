@@ -52,7 +52,7 @@ where
     R: RngCore + CryptoRng,
 {
     /// Create a new typestated prover bound to the compile-time protocol IV.
-    pub fn new(pattern: Arc<InteractionPattern>, csrng: R) -> Self {
+    pub fn new(pattern: InteractionPattern, csrng: R) -> Self {
         let iv = pattern.domain_separator();
         let iv0 = u128::from_le_bytes(iv[0..16].try_into().unwrap());
         let iv1 = u128::from_le_bytes(iv[16..32].try_into().unwrap());
@@ -103,7 +103,7 @@ where
 
     /// Consume the prover and finalize, returning the proof bytes
     pub fn finalize(self) -> Vec<u8> {
-        self.inner.finalize().unwrap()
+        self.inner.finalize()
     }
 
     /// Access the underlying RNG for generating randomness

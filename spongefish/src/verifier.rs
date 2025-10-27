@@ -6,7 +6,7 @@ use crate::{
     pattern::{
         Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, Pattern, PatternPlayer,
     },
-    ByteTranscript, DefaultHash, MessageReader, MessageWriter, UnitTranscript,
+    ByteTranscript, DefaultHash, MessageReader, UnitTranscript,
     VerifierByteTranscript,
 };
 
@@ -78,7 +78,8 @@ where
 impl<'a, U: Unit, H: DuplexSpongeInterface<U>> VerifierState<'a, H, U> {
     /// Create a new verifier state.
     #[must_use]
-    pub fn new(pattern: Arc<InteractionPattern>, narg_string: &'a [u8]) -> Self {
+    pub fn new(pattern: InteractionPattern, narg_string: &'a [u8]) -> Self {
+        let pattern = Arc::new(pattern);
         let iv = pattern.domain_separator();
         let mut state = Self {
             pattern: PatternPlayer::new(pattern.clone()),
@@ -507,9 +508,9 @@ mod tests {
     fn test_fill_next_units_with_message() {
         let mut pattern = PatternState::new();
         let _ = pattern.message_units(Label::Units, 3);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"abc");
+        let mut vs = VerifierState::<DummySponge>::new(pattern.clone(), b"abc");
         let mut buf = [0u8; 3];
 
         vs.fill_next_units(Label::Units, &mut buf).unwrap();
@@ -522,7 +523,7 @@ mod tests {
     fn test_new_verifier_state_constructs_correctly() {
         let pattern = PatternState::new().finalize();
         let transcript = b"abc";
-        let vs = VerifierState::<DummySponge>::new(Arc::new(pattern), transcript);
+        let vs = VerifierState::<DummySponge>::new(pattern, transcript);
         assert_eq!(vs.narg_string, b"abc");
         assert_eq!(vs.cursor, 0);
         let _ = vs.finalize();
@@ -533,9 +534,9 @@ mod tests {
     fn test_fill_next_units_with_insufficient_data_errors() {
         let mut pattern = PatternState::new();
         let _ = pattern.message_units(Label::Units, 4);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"xy");
+        let mut vs = VerifierState::<DummySponge>::new(pattern.clone(), b"xy");
         vs.begin_message::<u8>(Label::Units, Length::Fixed(4));
         let mut buf = [0u8; 4];
 
@@ -550,9 +551,9 @@ mod tests {
     fn test_ratcheting_success() {
         let mut pattern = PatternState::new();
         let _ = pattern.ratchet();
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), &[]);
+        let mut vs = VerifierState::<DummySponge>::new(pattern.clone(), &[]);
         vs.ratchet();
         assert!(*vs.duplex_sponge.ratcheted.borrow());
         vs.finalize();
@@ -563,9 +564,9 @@ mod tests {
     fn test_unit_transcript_public_units() {
         let mut pattern = PatternState::new();
         let _ = pattern.message_public_units(Label::from("public_units"), 2);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"..");
+        let mut vs = VerifierState::<DummySponge>::new(pattern.clone(), b"..");
         let _ = vs.message_public_units(Label::from("public_units"), &[1, 2]);
         assert_eq!(*vs.duplex_sponge.absorbed.borrow(), &[1, 2]);
         vs.finalize();
@@ -575,9 +576,9 @@ mod tests {
     fn test_unit_transcript_fill_challenge_units() {
         let mut pattern = PatternState::new();
         let _ = pattern.challenge_units(Label::from("challenge"), 4);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"");
+        let mut vs = VerifierState::<DummySponge>::new(pattern.clone(), b"");
 
         let mut out = [0u8; 4];
         vs.challenge_units(Label::from("challenge"), &mut out);
@@ -591,9 +592,9 @@ mod tests {
     fn test_fill_next_bytes_impl() {
         let mut pattern = PatternState::new();
         pattern.message_bytes(Label::from("bytes"), 3);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut vs = VerifierState::<DummySponge>::new(Arc::clone(&pattern), b"xyz");
+        let mut vs = VerifierState::<DummySponge>::new(pattern.clone(), b"xyz");
         let mut out = [0u8; 3];
 
         vs.fill_next_units(Label::from("bytes"), &mut out).unwrap();
@@ -605,11 +606,11 @@ mod tests {
     fn test_hint_bytes_verifier_valid_hint() {
         let mut pattern = PatternState::new();
         let _ = pattern.hint_bytes_dynamic(Label::from("hint_bytes"));
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
         let hint = b"abc123";
 
-        let mut prover: ProverState = ProverState::from(pattern.as_ref());
+        let mut prover: ProverState = ProverState::from(pattern.clone());
         prover.hint_bytes(Label::from("hint_bytes"), hint);
 
         let narg = prover.finalize();
@@ -627,11 +628,11 @@ mod tests {
     fn test_hint_bytes_verifier_empty_hint() {
         let mut pattern = PatternState::new();
         let _ = pattern.hint_bytes_dynamic(Label::from("hint_bytes"));
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
         let hint = b"";
 
-        let mut prover: ProverState = ProverState::from(pattern.as_ref());
+        let mut prover: ProverState = ProverState::from(pattern.clone());
         prover.hint_bytes(Label::from("hint_bytes"), hint);
         let narg = prover.finalize();
 
@@ -652,7 +653,7 @@ mod tests {
         pattern.message_public_bytes(Label::custom("public_bytes"), 2);
         let pattern = pattern.finalize();
         let narg = hex::decode("06000000616263313233").unwrap();
-        let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), &narg);
+        let mut vs: VerifierState = VerifierState::new(pattern, &narg);
         let mut result = Vec::new();
         // Should panic because there's no hint operation in the pattern
         vs.hint_bytes(Label::custom("hint_bytes"), &mut result)
@@ -667,7 +668,7 @@ mod tests {
         let pattern = pattern.finalize();
 
         let narg = &[1, 2, 3];
-        let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), narg);
+        let mut vs: VerifierState = VerifierState::new(pattern, narg);
         let mut result = Vec::new();
         let err = vs.hint_bytes(Label::custom("hint_bytes"), &mut result);
 
@@ -683,7 +684,7 @@ mod tests {
         let pattern = pattern.finalize();
 
         let narg = [5u8, 0, 0, 0, b'a', b'b'];
-        let mut vs: VerifierState = VerifierState::new(Arc::new(pattern), &narg);
+        let mut vs: VerifierState = VerifierState::new(pattern, &narg);
         let mut result = Vec::new();
         let err = vs.hint_bytes(Label::custom("hint_bytes"), &mut result);
 

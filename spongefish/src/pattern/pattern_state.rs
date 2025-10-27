@@ -1,4 +1,4 @@
-use super::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, PatternError};
+use super::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length};
 use crate::codecs::unit;
 
 /// Builder for constructing interaction patterns.

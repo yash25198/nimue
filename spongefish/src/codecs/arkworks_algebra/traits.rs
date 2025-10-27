@@ -6,7 +6,7 @@ use ark_ec::CurveGroup;
 use ark_ff::Field;
 
 use crate::{
-    pattern::{Label, Length, Pattern, PatternError},
+    pattern::{Label, Length, Pattern},
     ProofError,
 };
 

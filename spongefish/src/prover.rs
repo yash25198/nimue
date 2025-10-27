@@ -96,7 +96,8 @@ where
     R: RngCore + CryptoRng,
 {
     /// Create a new prover state.
-    pub fn new(pattern: Arc<InteractionPattern>, csrng: R) -> Self {
+    pub fn new(pattern: InteractionPattern, csrng: R) -> Self {
+        let pattern = Arc::new(pattern);
         let iv = pattern.domain_separator();
 
         let mut duplex_sponge = Keccak::default();
@@ -317,13 +318,13 @@ where
     }
 }
 
-impl<U, H> From<&InteractionPattern> for ProverState<H, U, DefaultRng>
+impl<U, H> From<InteractionPattern> for ProverState<H, U, DefaultRng>
 where
     U: Unit,
     H: DuplexSpongeInterface<U>,
 {
-    fn from(pattern: &InteractionPattern) -> Self {
-        ProverState::new(Arc::new(pattern.clone()), DefaultRng::default())
+    fn from(pattern: InteractionPattern) -> Self {
+        ProverState::new(pattern, DefaultRng::default())
     }
 }
 
@@ -442,7 +443,7 @@ mod tests {
         pattern.message_bytes(Label::Bytes, 4);
         let pattern = pattern.finalize();
 
-        let mut pstate: ProverState = ProverState::from(&pattern);
+        let mut pstate: ProverState = ProverState::from(pattern);
 
         pstate.message_bytes(Label::Bytes, &[1, 2, 3, 4]);
 
@@ -457,7 +458,7 @@ mod tests {
         let mut pattern = PatternState::new();
         pattern.message_public_units(Label::custom("public_units"), 4);
         let pattern = pattern.finalize();
-        let mut pstate: ProverState = ProverState::from(&pattern);
+        let mut pstate: ProverState = ProverState::from(pattern);
         pstate.message_public_units(Label::custom("public_units"), &[1, 2, 3, 4]);
         assert_eq!(pstate.narg_string(), b"");
         let _proof = pstate.finalize();
@@ -469,7 +470,7 @@ mod tests {
         pattern.ratchet();
         let pattern = pattern.finalize();
 
-        let mut pstate: ProverState = ProverState::from(&pattern);
+        let mut pstate: ProverState = ProverState::from(pattern);
         let mut buf1 = [0u8; 4];
         pstate.rng().fill_bytes(&mut buf1);
         pstate.ratchet();
@@ -485,7 +486,7 @@ mod tests {
         let mut pattern = PatternState::new();
         pattern.message_units(Label::Units, 3);
         let pattern = pattern.finalize();
-        let mut pstate: ProverState = ProverState::from(&pattern);
+        let mut pstate: ProverState = ProverState::from(pattern);
 
         let input = [42, 43, 44];
 
@@ -501,7 +502,7 @@ mod tests {
         pattern.message_units(Label::Units, 2);
         let pattern = pattern.finalize();
 
-        let mut pstate: ProverState = ProverState::from(&pattern);
+        let mut pstate: ProverState = ProverState::from(pattern);
         pstate.add_units(Label::Units, &[1, 2, 3]);
 
         pstate.finalize();
@@ -513,7 +514,7 @@ mod tests {
         pattern.ratchet();
         let pattern = pattern.finalize();
 
-        let mut pstate: ProverState = ProverState::from(&pattern);
+        let mut pstate: ProverState = ProverState::from(pattern);
         pstate.ratchet();
         let _proof = pstate.finalize();
     }
@@ -525,7 +526,7 @@ mod tests {
         pattern.message_units(Label::Units, 4);
         let pattern = pattern.finalize();
 
-        let mut pstate: ProverState = ProverState::from(&pattern);
+        let mut pstate: ProverState = ProverState::from(pattern);
         pstate.ratchet();
         let _proof = pstate.finalize();
     }
@@ -538,7 +539,7 @@ mod tests {
         pattern.end_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8));
         let pattern = pattern.finalize();
 
-        let mut pstate: ProverState = ProverState::from(&pattern);
+        let mut pstate: ProverState = ProverState::from(pattern);
         let mut out = [0u8; 8];
         pstate.challenge_bytes(Label::custom("fill_challenge_units"), &mut out);
         assert_ne!(out, [0u8; 8], "Challenge bytes should not be all zeros");
@@ -551,8 +552,8 @@ mod tests {
         pattern.message_bytes(Label::Bytes, 3);
         let pattern = pattern.finalize();
 
-        let mut p1: ProverState = ProverState::from(&pattern);
-        let mut p2: ProverState = ProverState::from(&pattern);
+        let mut p1: ProverState = ProverState::from(pattern.clone());
+        let mut p2: ProverState = ProverState::from(pattern);
 
         let mut a = [0u8; 16];
         let mut b = [0u8; 16];
@@ -573,7 +574,7 @@ mod tests {
         pattern.message_units(Label::Units, 3);
         let pattern = pattern.finalize();
 
-        let mut p: ProverState = ProverState::from(&pattern);
+        let mut p: ProverState = ProverState::from(pattern);
         p.add_units(Label::Units, &[10, 11]);
         p.add_units(Label::Units, &[20, 21, 22]);
         assert_eq!(p.finalize(), &[10, 11, 20, 21, 22]);
@@ -585,7 +586,7 @@ mod tests {
         pattern.message_units(Label::Units, 5);
         let pattern = pattern.finalize();
 
-        let mut p: ProverState = ProverState::from(&pattern);
+        let mut p: ProverState = ProverState::from(pattern);
         let msg = b"zkp42";
         p.add_units(Label::Units, msg);
         assert_eq!(p.finalize(), msg);
@@ -597,7 +598,7 @@ mod tests {
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize();
 
-        let mut prover: ProverState = ProverState::from(&pattern);
+        let mut prover: ProverState = ProverState::from(pattern);
         let hint = b"abc123";
         prover.hint_bytes(Label::custom("hint_bytes"), hint);
         let expected = [6, 0, 0, 0, b'a', b'b', b'c', b'1', b'2', b'3'];
@@ -610,7 +611,7 @@ mod tests {
         pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
         let pattern = pattern.finalize();
 
-        let mut prover: ProverState = ProverState::from(&pattern);
+        let mut prover: ProverState = ProverState::from(pattern);
         prover.hint_bytes(Label::custom("hint_bytes"), b"");
         assert_eq!(prover.finalize(), &[0, 0, 0, 0]);
     }
@@ -620,7 +621,7 @@ mod tests {
     fn test_hint_bytes_fails_if_hint_op_missing() {
         let pattern = PatternState::new().finalize();
 
-        let mut prover: ProverState = ProverState::from(&pattern);
+        let mut prover: ProverState = ProverState::from(pattern);
         prover.hint_bytes(Label::custom("hint_bytes"), b"some_hint");
         prover.finalize();
     }
@@ -632,8 +633,8 @@ mod tests {
         let pattern = pattern.finalize();
 
         let hint = b"zkproof_hint";
-        let mut prover1: ProverState = ProverState::from(&pattern);
-        let mut prover2: ProverState = ProverState::from(&pattern);
+        let mut prover1: ProverState = ProverState::from(pattern.clone());
+        let mut prover2: ProverState = ProverState::from(pattern);
 
         prover1.hint_bytes(Label::custom("hint_bytes"), hint);
         prover2.hint_bytes(Label::custom("hint_bytes"), hint);

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use rand::RngCore;
 
 use crate::{
@@ -7,8 +5,8 @@ use crate::{
     duplex_sponge::legacy::DigestBridge,
     keccak::Keccak,
     pattern::{Label, Length, Pattern, PatternState},
-    traits::{ByteTranscript, UnitTranscript},
-    DuplexSpongeInterface, ProverState, VerifierState,
+    traits::ByteTranscript,
+    ProverState, VerifierState,
 };
 
 type Sha2 = DigestBridge<sha2::Sha256>;
@@ -19,7 +17,7 @@ type Blake2s256 = DigestBridge<blake2::Blake2s256>;
 #[test]
 fn test_prover_rng_basic() {
     let pattern = PatternState::new().finalize();
-    let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
+    let mut prover_state: ProverState<Keccak> = ProverState::from(pattern);
     let rng = prover_state.rng();
 
     let mut random_bytes = [0u8; 32];
@@ -43,7 +41,7 @@ fn test_prover_bytewriter_correct() {
     pattern.end_message::<u8>(Label::Bytes, Length::Fixed(1));
     let pattern = pattern.finalize();
 
-    let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
+    let mut prover_state: ProverState<Keccak> = ProverState::from(pattern);
     prover_state.message_bytes(Label::Bytes, &[0u8]);
     let proof = prover_state.finalize();
     assert_eq!(hex::encode(proof), "00");
@@ -59,7 +57,7 @@ fn test_prover_bytewriter_invalid() {
     pattern.end_message::<u8>(Label::Bytes, Length::Fixed(1));
     let pattern = pattern.finalize();
 
-    let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
+    let mut prover_state: ProverState<Keccak> = ProverState::from(pattern);
     prover_state.message_bytes(Label::Bytes, &[0u8]);
     prover_state.message_bytes(Label::Bytes, &[1u8]); // Should panic
 }
@@ -72,7 +70,7 @@ fn test_prover_public_units_invalid() {
     pattern.message_public_units(Label::custom("public_units"), 1);
     let pattern = pattern.finalize();
 
-    let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
+    let mut prover_state: ProverState<Keccak> = ProverState::from(pattern);
     prover_state.message_public_units(Label::custom("public_units"), &[0u8]);
     prover_state.message_public_units(Label::custom("public_units"), &[1u8]); // Should panic
 }
@@ -85,7 +83,7 @@ fn test_invalid_domsep_sequence() {
     pattern.challenge_units(Label::custom("challenge_units"), 1);
     let pattern = pattern.finalize();
 
-    let mut verifier_state: VerifierState<Keccak> = VerifierState::new(Arc::new(pattern), &[]);
+    let mut verifier_state: VerifierState<Keccak> = VerifierState::new(pattern, &[]);
     // Try to challenge before reading message - should panic
     verifier_state.challenge_bytes(Label::custom("challenge_units"), &mut [0u8; 16]);
 }
@@ -99,7 +97,7 @@ fn test_unfinished_domsep() {
     pattern.challenge_units(Label::custom("another_elt"), 16);
     let pattern = pattern.finalize();
 
-    let _verifier: VerifierState = VerifierState::new(pattern.into(), b"");
+    let _verifier: VerifierState = VerifierState::new(pattern, b"");
 }
 
 /// The domain separator tag should be deterministic.
@@ -135,7 +133,7 @@ fn test_transcript_readwrite() {
     pattern.challenge_units(Label::custom("challenge_units"), 10);
     let pattern = pattern.finalize();
 
-    let mut prover_state: ProverState = ProverState::from(&pattern);
+    let mut prover_state: ProverState = ProverState::from(pattern.clone());
     prover_state.add_units(Label::Units, &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     let mut data = [0u8; 10];
     prover_state.challenge_units(Label::custom("challenge_units"), &mut data);
@@ -151,7 +149,7 @@ fn test_transcript_readwrite() {
         "0001020304050607080900010203040506070809"
     );
 
-    let mut verifier_state: VerifierState = VerifierState::new(Arc::new(pattern), &proof);
+    let mut verifier_state: VerifierState = VerifierState::new(pattern, &proof);
     let mut input = [0u8; 10];
     verifier_state
         .fill_next_units(Label::Units, &mut input)
@@ -183,7 +181,7 @@ fn test_incomplete_domsep() {
     pattern.challenge_units(Label::custom("challenge_units"), 1);
     let pattern = pattern.finalize();
 
-    let mut prover_state: ProverState<Keccak> = ProverState::from(&pattern);
+    let mut prover_state: ProverState<Keccak> = ProverState::from(pattern);
     prover_state.add_units(Label::Units, &[0u8; 10]);
     // This should panic due to pattern mismatch length
     prover_state.challenge_bytes(Label::custom("challenge_units"), &mut [0u8; 10]);
@@ -199,14 +197,14 @@ fn test_prover_empty_absorb() {
     pattern.challenge_units(Label::custom("challenge_units"), 0);
     let pattern = pattern.finalize();
 
-    let mut prover_state: ProverState = ProverState::from(&pattern);
+    let mut prover_state: ProverState = ProverState::from(pattern.clone());
     prover_state.add_units(Label::Units, b"");
     let mut challenge = [0u8; 0];
     prover_state.challenge_units(Label::custom("challenge_units"), &mut challenge);
     let proof = prover_state.finalize();
     assert!(proof.is_empty());
 
-    let mut vstate: VerifierState<Keccak> = VerifierState::new(Arc::new(pattern), &proof);
+    let mut vstate: VerifierState<Keccak> = VerifierState::new(pattern, &proof);
     // For 0-length units, we don't read from the proof, but we still need to consume the interaction
     // The verifier state constructor handles this automatically based on the pattern
     let mut vchallenge = [0u8; 0];

@@ -58,7 +58,7 @@
 //!  let pattern = pattern.finalize();
 //!
 //! // Use pattern with prover/verifier
-//! let mut prover = ProverState::from(&pattern);
+//! let mut prover = ProverState::from(pattern);
 //! // ... protocol execution ...
 //! ```
 //!
@@ -242,7 +242,6 @@ mod tests {
             Length::Scalar,
         ));
         pattern.end_protocol(Label::custom("Invalid example protocol"));
-        // This should panic when build() is called
         pattern.finalize();
     }
 

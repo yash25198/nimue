@@ -4,7 +4,7 @@ use ark_ff::{Field, Fp, FpConfig, PrimeField};
 use super::traits::{FieldTranscript, GroupTranscript};
 use crate::{
     codecs::bytes_uniform_modp, pattern::Label, ByteTranscript, DuplexSpongeInterface,
-    UnitTranscript, VerifierState,
+    VerifierState,
 };
 
 // ============================================================================
@@ -177,8 +177,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-
     use ark_bls12_381::Fr;
     use ark_ec::{AdditiveGroup, PrimeGroup};
     use ark_ff::{Fp64, MontBackend, MontConfig, UniformRand};
@@ -230,7 +228,7 @@ mod tests {
         let pattern = pattern.finalize();
 
         let mut prover =
-            ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
+            ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         let _ = prover.message_scalars(Label::from("tag"), &values);
 
         // Verify narg_string
@@ -242,7 +240,7 @@ mod tests {
 
         let proof = prover.finalize();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
 
         let _ = verifier
             .read_message_scalars(Label::from("tag"), &mut values2)
@@ -268,7 +266,7 @@ mod tests {
         let pattern = pattern.finalize();
 
         let mut prover =
-            ProverState::<DefaultHash>::new(Arc::new(pattern.clone()), rand::rngs::OsRng);
+            ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         let _ = prover.message_points(Label::custom("generator"), &[point]);
 
         // Verify narg_string matches expected serialization
@@ -276,7 +274,7 @@ mod tests {
 
         let proof = prover.finalize();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(Arc::new(pattern), &proof);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
 
         let mut out = [ark_curve25519::EdwardsProjective::ZERO];
         let _ = verifier
@@ -307,7 +305,7 @@ mod tests {
         // Create a pattern with a message scalar (not challenge)
         let mut pattern = PatternState::new();
         pattern.message_scalars::<BabyBear>(Label::from("tag"), 1);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
         let mut prover = ProverState::<DefaultHash, u8>::new(pattern.clone(), rand::rngs::OsRng);
 
@@ -322,7 +320,7 @@ mod tests {
         // Finalize the prover to get the proof
         let proof = prover.finalize();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
 
         let mut out = [BabyBear::ZERO; 1];
         let _ = verifier
@@ -354,13 +352,13 @@ mod tests {
 
         let mut pattern = PatternState::new();
         pattern.message_scalars::<Fr>(Label::custom("data"), 2);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
-        let mut prover = ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+        let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         prover.message_scalars(Label::custom("data"), &scalars);
         let proof = prover.finalize();
 
-        let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
+        let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut received = [Fr::from(0); 2];
         verifier
             .read_message_scalars(Label::custom("data"), &mut received)
@@ -381,12 +379,12 @@ mod tests {
         let mut pattern = PatternState::new();
         pattern.message_public_scalars::<Fr>(Label::custom("public"), 1);
         pattern.challenge_scalars::<Fr>(Label::custom("challenge"), 1);
-        let pattern = Arc::new(pattern.finalize());
+        let pattern = pattern.finalize();
 
         // Prover 1 with public1
         let proof1 = {
             let mut prover =
-                ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+                ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
             prover.message_public_scalars(Label::custom("public"), &[public1]);
             let mut chal = [Fr::from(0)];
             prover.challenge_scalars(Label::custom("challenge"), &mut chal);
@@ -396,7 +394,7 @@ mod tests {
         // Prover 2 with public2
         let proof2 = {
             let mut prover =
-                ProverState::<DefaultHash>::new(Arc::clone(&pattern), rand::rngs::OsRng);
+                ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
             prover.message_public_scalars(Label::custom("public"), &[public2]);
             let mut chal = [Fr::from(0)];
             prover.challenge_scalars(Label::custom("challenge"), &mut chal);
@@ -406,7 +404,7 @@ mod tests {
         // Verifier 1 with public1
         let mut chal1 = [Fr::from(0)];
         {
-            let mut verifier = VerifierState::<DefaultHash>::new(Arc::clone(&pattern), &proof1);
+            let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof1);
             verifier.message_public_scalars(Label::custom("public"), &[public1]);
             verifier.challenge_scalars(Label::custom("challenge"), &mut chal1);
             verifier.finalize();
