@@ -11,13 +11,13 @@ where
     P: pattern::Pattern + bytes::Pattern,
     F: PrimeField,
 {
-    fn message_scalars(&mut self, label: Label, count: usize) {
+    fn message_scalars(&mut self, label: impl AsRef<str>, count: usize) {
         self.begin_message::<F>(label, Length::Fixed(count));
         self.message_bytes("bytes", count * bytes_modp(F::NUM_BITS));
         self.end_message::<F>(label, Length::Fixed(count));
     }
 
-    fn challenge_scalars(&mut self, label: Label, count: usize) {
+    fn challenge_scalars(&mut self, label: impl AsRef<str>, count: usize) {
         self.begin_challenge::<F>(label, Length::Fixed(count));
         self.challenge_bytes("bytes", count * bytes_uniform_modp(F::NUM_BITS));
         self.end_challenge::<F>(label, Length::Fixed(count));
@@ -30,7 +30,7 @@ where
     G: Group + GroupEncoding,
     G::Repr: AsRef<[u8]>,
 {
-    fn message_points(&mut self, label: Label, count: usize) {
+    fn message_points(&mut self, label: impl AsRef<str>, count: usize) {
         self.begin_message::<G>(label, Length::Fixed(count));
         let n = G::Repr::default().as_ref().len();
         self.message_bytes("bytes", count * n);

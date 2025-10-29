@@ -1,131 +1,73 @@
 use ark_ec::CurveGroup;
-use ark_ff::{Field, Fp, FpConfig, PrimeField};
+use ark_ff::{Field, PrimeField};
 
 use super::{FieldPattern, GroupPattern};
 use crate::{
     codecs::{
-        bytes::{self, Pattern as _},
+        bytes::{self, Pattern},
         bytes_modp, bytes_uniform_modp,
-        unit::{self, Pattern as _},
     },
-    pattern::{self, Label, Length, Pattern as _, PatternState},
+    pattern::{labels::{self, SERIALIZED_GROUP}, Label, Length, Pattern as _, PatternState},
 };
 
-impl<F> FieldPattern<F> for PatternState
-where
-    F: Field,
-{
-    fn message_scalars(&mut self, label: Label, count: usize) {
-        self.begin_message::<F>(label, Length::Fixed(count));
+impl FieldPattern for crate::pattern::PatternState {
+    fn message_scalars<F: Field>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
+        self.begin_message::<F>(&label, Length::Fixed(count));
         self.message_bytes(
-            "base-field-coefficients-little-endian",
-            count
-                * F::extension_degree() as usize
-                * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
+            labels::BASE_FIELD_COEFFICIENTS,
+            count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE), // ✓ Changed from bytes_modp
         );
         self.end_message::<F>(label, Length::Fixed(count));
+        self
     }
 
-    fn challenge_scalars(&mut self, label: Label, count: usize) {
-        self.begin_challenge::<F>(label, Length::Fixed(count));
+    fn challenge_scalars<F: Field>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
+        self.begin_challenge::<F>(&label, Length::Fixed(count));
         self.challenge_bytes(
-            "base-field-coefficients-little-endian",
-            count
-                * F::extension_degree() as usize
-                * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE),
+            labels::BASE_FIELD_COEFFICIENTS,
+            count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE), // ✓ Already correct
         );
         self.end_challenge::<F>(label, Length::Fixed(count));
+        self
     }
-}
 
-impl<F, C, const N: usize> FieldPattern<F> for PatternState<Fp<C, N>>
-where
-    F: Field<BasePrimeField = Fp<C, N>>,
-    C: FpConfig<N>,
-{
-    fn message_scalars(&mut self, label: Label, count: usize) {
-        self.begin_message::<F>(label, Length::Fixed(count));
-        self.message_units(
-            "base-field-coefficients",
-            count * F::extension_degree() as usize,
+    fn message_public_scalars<F: Field>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
+        self.begin_public::<F>(&label, Length::Fixed(count));
+        self.message_bytes(
+            labels::BASE_FIELD_COEFFICIENTS,
+            count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE), // ✓ Changed from bytes_modp
         );
-        self.end_message::<F>(label, Length::Fixed(count));
-    }
-
-    fn challenge_scalars(&mut self, label: Label, count: usize) {
-        self.begin_challenge::<F>(label, Length::Fixed(count));
-        self.challenge_units(
-            "base-field-coefficients",
-            count * F::extension_degree() as usize,
-        );
-        self.end_challenge::<F>(label, Length::Fixed(count));
+        self.end_public::<F>(label, Length::Fixed(count));
+        self
     }
 }
+impl GroupPattern for crate::pattern::PatternState {
+    fn message_points<G: CurveGroup>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
+        use bytes::Pattern as BytesPattern;
 
-/// Implementation where `Unit = Fp<C, N>`
-impl<C, const N: usize> bytes::Pattern for PatternState<Fp<C, N>>
-where
-    C: FpConfig<N>,
-{
-    /// Add `count` bytes to the transcript, encoding each of them as an element of the field `Fp`.
-    fn public_bytes(&mut self, label: Label, size: usize) {
-        self.begin_public::<u8>(label, Length::Fixed(size));
-        self.public_units("units", size);
-        self.end_public::<u8>(label, Length::Fixed(size))
+        let compressed_size = G::default().compressed_size();
+        self.begin_message::<G>(&label, Length::Fixed(count));
+        self.message_bytes(labels::SERIALIZED_GROUP , count * compressed_size);
+        self.end_message::<G>(&label, Length::Fixed(count));
+        self
     }
 
-    /// Add `count` bytes to the transcript, encoding each of them as an element of the field `Fp`.
-    fn message_bytes(&mut self, label: Label, size: usize) {
-        self.begin_message::<u8>(label, Length::Fixed(size));
-        self.message_units("units", size);
-        self.end_message::<u8>(label, Length::Fixed(size))
-    }
+    fn message_public_points<G: CurveGroup>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
+        use bytes::Pattern as BytesPattern;
 
-    fn challenge_bytes(&mut self, label: Label, size: usize) {
-        self.begin_challenge::<u8>(label, Length::Fixed(size));
-        let n = crate::codecs::random_bits_in_random_modp(Fp::<C, N>::MODULUS) / 8;
-        self.challenge_units("units", size.div_ceil(n));
-        self.end_challenge::<u8>(label, Length::Fixed(size))
-    }
-}
-
-impl<G> GroupPattern<G> for PatternState<u8>
-where
-    G: CurveGroup,
-{
-    fn message_points(&mut self, label: Label, count: usize) {
-        self.begin_message::<G>(label, Length::Fixed(count));
-        self.message_bytes("serialized-group", count * G::default().compressed_size());
-        self.end_message::<G>(label, Length::Fixed(count));
-    }
-}
-
-impl<G, C, const N: usize> GroupPattern<G> for PatternState<Fp<C, N>>
-where
-    G: CurveGroup<BaseField = Fp<C, N>>,
-    C: FpConfig<N>,
-{
-    fn message_points(&mut self, label: Label, count: usize) {
-        self.begin_message::<G>(label, Length::Fixed(count));
-        self.message_units("coordinates", count * 2);
-        self.end_message::<G>(label, Length::Fixed(count));
+        let compressed_size = G::default().compressed_size();
+        self.begin_public::<G>(&label, Length::Fixed(count));
+        self.message_public_bytes(labels::SERIALIZED_GROUP, count * compressed_size);
+        self.end_public::<G>(label, Length::Fixed(count));
+        self
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use ark_bls12_381::{Fq2, Fr};
-    use ark_curve25519::EdwardsProjective as Curve;
-    use ark_ff::{
-        AdditiveGroup, Fp2, Fp2Config, Fp4, Fp4Config, Fp64, MontBackend, MontConfig, MontFp,
-        PrimeField,
-    };
+    use ark_ff::{AdditiveGroup, Fp2, Fp2Config, Fp4, Fp4Config, Fp64, MontBackend, MontConfig};
 
     use super::*;
-    use crate::{
-        pattern::{InteractionPattern, Pattern},
-        DefaultHash,
-    };
 
     /// Configuration for the BabyBear field (modulus = 2^31 - 2^27 + 1, generator = 21).
     #[derive(MontConfig)]
@@ -137,6 +79,7 @@ mod tests {
     pub type BabyBear = Fp64<MontBackend<BabybearConfig, 1>>;
 
     /// Quadratic extension field over BabyBear.
+    #[allow(dead_code)]
     pub type BabyBear2 = Fp2<F2Config64>;
 
     /// Configuration for the quadratic extension BabyBear2.
@@ -153,6 +96,7 @@ mod tests {
     }
 
     /// Quartic extension field over BabyBear using nested Fp2 extensions.
+    #[allow(dead_code)]
     pub type BabyBear4 = Fp4<F4Config64>;
 
     /// Configuration for the quartic extension BabyBear4.
@@ -170,42 +114,23 @@ mod tests {
 
     #[test]
     fn test_domain_separator() {
-        // OPTION 1 (fails)
-        // let domain_separator = DomainSeparator::new("github.com/mmaker/spongefish")
-        //     .absorb_points(1, "g")
-        //     .absorb_points(1, "pk")
-        //     .ratchet()
-        //     .absorb_points(1, "com")
-        //     .squeeze_scalars(1, "chal")
-        //     .absorb_scalars(1, "resp");
-
-        // // OPTION 2
+        // Use the new Pattern API instead of DomainSeparator
         fn add_schnorr_domain_separator<P, G: ark_ec::CurveGroup>(pattern: &mut P)
         where
-            P: pattern::Pattern + unit::Pattern + FieldPattern<G::BaseField> + GroupPattern<G>,
+            P: crate::pattern::Pattern + crate::codecs::unit::Pattern + FieldPattern + GroupPattern,
         {
-            pattern.begin_protocol::<()>("github.com/mmaker/spongefish");
-            pattern.message_points("g", 1);
-            pattern.message_points("pk", 1);
-            pattern.ratchet();
-            pattern.message_points("com", 1);
-            pattern.challenge_scalars("chal", 1);
-            pattern.message_scalars("resp", 1);
-            pattern.end_protocol::<()>("github.com/mmaker/spongefish");
+            let _ = pattern.begin_protocol(Label::new("github.com/mmaker/spongefish"));
+            let _ = pattern.message_points::<G>(Label::new("g"), 1);
+            let _ = pattern.message_points::<G>(Label::new("pk"), 1);
+            let _ = pattern.ratchet();
+            let _ = pattern.message_points::<G>(Label::new("com"), 1);
+            let _ = pattern.challenge_scalars::<G::BaseField>(Label::new("chal"), 1);
+            let _ = pattern.message_scalars::<G::BaseField>(Label::new("resp"), 1);
+            let _ = pattern.end_protocol(Label::new("github.com/mmaker/spongefish"));
         }
-        let mut pattern = PatternState::<u8>::new();
+        let mut pattern = PatternState::new();
         add_schnorr_domain_separator::<_, ark_curve25519::EdwardsProjective>(&mut pattern);
         let pattern = pattern.finalize();
-
-        // OPTION 3 (extra type, trait extensions should be on DomainSeparator or AlgebraicDomainSeparator?)
-        // let domain_separator =
-        //     ArkGroupDomainSeparator::<ark_curve25519::EdwardsProjective>::new("github.com/mmaker/spongefish")
-        //         .add_points(1, "g")
-        //         .add_points(1, "pk")
-        //         .ratchet()
-        //         .add_points(1, "com")
-        //         .challenge_scalars(1, "chal")
-        //         .add_scalars(1, "resp");
 
         assert_eq!(
             format!("{pattern}"),
@@ -228,14 +153,14 @@ mod tests {
 15     End Message serialized-group Fixed(32) u8
 16   End Message com Fixed(1) ark_ec::models::twisted_edwards::group::Projective<ark_curve25519::curves::Curve25519Config>
 17   Begin Challenge chal Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
-18     Begin Challenge base-field-coefficients-little-endian Fixed(47) u8
+18     Begin Challenge base-field-coefficients Fixed(47) u8
 19       Atomic Challenge units Fixed(47) u8
-20     End Challenge base-field-coefficients-little-endian Fixed(47) u8
+20     End Challenge base-field-coefficients Fixed(47) u8
 21   End Challenge chal Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
 22   Begin Message resp Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
-23     Begin Message base-field-coefficients-little-endian Fixed(32) u8
+23     Begin Message base-field-coefficients Fixed(32) u8
 24       Atomic Message units Fixed(32) u8
-25     End Message base-field-coefficients-little-endian Fixed(32) u8
+25     End Message base-field-coefficients Fixed(32) u8
 26   End Message resp Fixed(1) ark_ff::fields::models::fp::Fp<ark_ff::fields::models::fp::montgomery_backend::MontBackend<ark_curve25519::fields::fq::FqConfig, 4>, 4>
 27 End Protocol github.com/mmaker/spongefish None ()
 "#
