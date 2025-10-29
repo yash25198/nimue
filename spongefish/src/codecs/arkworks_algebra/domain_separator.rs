@@ -7,34 +7,34 @@ use crate::{
         bytes::{self, Pattern},
         bytes_modp, bytes_uniform_modp,
     },
-    pattern::{Label, Length, Pattern as _, PatternState},
+    pattern::{labels::{self, SERIALIZED_GROUP}, Label, Length, Pattern as _, PatternState},
 };
 
 impl FieldPattern for crate::pattern::PatternState {
-    fn message_scalars<F: Field>(&mut self, label: Label, count: usize) -> &mut Self {
-        self.begin_message::<F>(label.clone(), Length::Fixed(count));
+    fn message_scalars<F: Field>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
+        self.begin_message::<F>(&label, Length::Fixed(count));
         self.message_bytes(
-            Label::BaseFieldCoefficients,
+            labels::BASE_FIELD_COEFFICIENTS,
             count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE), // ✓ Changed from bytes_modp
         );
         self.end_message::<F>(label, Length::Fixed(count));
         self
     }
 
-    fn challenge_scalars<F: Field>(&mut self, label: Label, count: usize) -> &mut Self {
-        self.begin_challenge::<F>(label.clone(), Length::Fixed(count));
+    fn challenge_scalars<F: Field>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
+        self.begin_challenge::<F>(&label, Length::Fixed(count));
         self.challenge_bytes(
-            Label::BaseFieldCoefficients,
+            labels::BASE_FIELD_COEFFICIENTS,
             count * bytes_uniform_modp(F::BasePrimeField::MODULUS_BIT_SIZE), // ✓ Already correct
         );
         self.end_challenge::<F>(label, Length::Fixed(count));
         self
     }
 
-    fn message_public_scalars<F: Field>(&mut self, label: Label, count: usize) -> &mut Self {
-        self.begin_public::<F>(label.clone(), Length::Fixed(count));
+    fn message_public_scalars<F: Field>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
+        self.begin_public::<F>(&label, Length::Fixed(count));
         self.message_bytes(
-            Label::BaseFieldCoefficients,
+            labels::BASE_FIELD_COEFFICIENTS,
             count * bytes_modp(F::BasePrimeField::MODULUS_BIT_SIZE), // ✓ Changed from bytes_modp
         );
         self.end_public::<F>(label, Length::Fixed(count));
@@ -42,22 +42,22 @@ impl FieldPattern for crate::pattern::PatternState {
     }
 }
 impl GroupPattern for crate::pattern::PatternState {
-    fn message_points<G: CurveGroup>(&mut self, label: Label, count: usize) -> &mut Self {
+    fn message_points<G: CurveGroup>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
         use bytes::Pattern as BytesPattern;
 
         let compressed_size = G::default().compressed_size();
-        self.begin_message::<G>(label.clone(), Length::Fixed(count));
-        self.message_bytes(Label::SerializedGroup, count * compressed_size);
-        self.end_message::<G>(label, Length::Fixed(count));
+        self.begin_message::<G>(&label, Length::Fixed(count));
+        self.message_bytes(labels::SERIALIZED_GROUP , count * compressed_size);
+        self.end_message::<G>(&label, Length::Fixed(count));
         self
     }
 
-    fn message_public_points<G: CurveGroup>(&mut self, label: Label, count: usize) -> &mut Self {
+    fn message_public_points<G: CurveGroup>(&mut self, label: impl AsRef<str>, count: usize) -> &mut Self {
         use bytes::Pattern as BytesPattern;
 
         let compressed_size = G::default().compressed_size();
-        self.begin_public::<G>(label.clone(), Length::Fixed(count));
-        self.message_public_bytes(Label::SerializedGroup, count * compressed_size);
+        self.begin_public::<G>(&label, Length::Fixed(count));
+        self.message_public_bytes(labels::SERIALIZED_GROUP, count * compressed_size);
         self.end_public::<G>(label, Length::Fixed(count));
         self
     }
@@ -119,14 +119,14 @@ mod tests {
         where
             P: crate::pattern::Pattern + crate::codecs::unit::Pattern + FieldPattern + GroupPattern,
         {
-            let _ = pattern.begin_protocol(Label::custom("github.com/mmaker/spongefish"));
-            let _ = pattern.message_points::<G>(Label::custom("g"), 1);
-            let _ = pattern.message_points::<G>(Label::custom("pk"), 1);
+            let _ = pattern.begin_protocol(Label::new("github.com/mmaker/spongefish"));
+            let _ = pattern.message_points::<G>(Label::new("g"), 1);
+            let _ = pattern.message_points::<G>(Label::new("pk"), 1);
             let _ = pattern.ratchet();
-            let _ = pattern.message_points::<G>(Label::custom("com"), 1);
-            let _ = pattern.challenge_scalars::<G::BaseField>(Label::custom("chal"), 1);
-            let _ = pattern.message_scalars::<G::BaseField>(Label::custom("resp"), 1);
-            let _ = pattern.end_protocol(Label::custom("github.com/mmaker/spongefish"));
+            let _ = pattern.message_points::<G>(Label::new("com"), 1);
+            let _ = pattern.challenge_scalars::<G::BaseField>(Label::new("chal"), 1);
+            let _ = pattern.message_scalars::<G::BaseField>(Label::new("resp"), 1);
+            let _ = pattern.end_protocol(Label::new("github.com/mmaker/spongefish"));
         }
         let mut pattern = PatternState::new();
         add_schnorr_domain_separator::<_, ark_curve25519::EdwardsProjective>(&mut pattern);

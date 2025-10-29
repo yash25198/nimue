@@ -18,7 +18,7 @@ pub fn pattern_with_message_bytes(label: &'static str, size: usize) -> TestResul
     use crate::codecs::bytes::Pattern;
     
     let mut pattern = PatternState::new();
-    pattern.message_bytes(Label::custom(label), size)?;
+    pattern.message_bytes(Label::new(label), size)?;
     Ok(Arc::new(pattern.finalize()?))
 }
 
@@ -27,7 +27,7 @@ pub fn pattern_with_public_units(label: &'static str, size: usize) -> TestResult
     use crate::codecs::unit::Pattern;
     
     let mut pattern = PatternState::new();
-    pattern.public_units(Label::custom(label), size)?;
+    pattern.public_units(Label::new(label), size)?;
     Ok(Arc::new(pattern.finalize()?))
 }
 
@@ -36,7 +36,7 @@ pub fn pattern_with_challenge(label: &'static str, size: usize) -> TestResult<Ar
     use crate::codecs::unit::Pattern;
     
     let mut pattern = PatternState::new();
-    pattern.challenge_units(Label::custom(label), size)?;
+    pattern.challenge_units(Label::new(label), size)?;
     Ok(Arc::new(pattern.finalize()?))
 }
 
@@ -54,7 +54,7 @@ pub fn pattern_with_dynamic_hint(label: &'static str) -> TestResult<Arc<crate::p
     use crate::codecs::unit::Pattern;
     
     let mut pattern = PatternState::new();
-    pattern.hint_bytes_dynamic(Label::custom(label))?;
+    pattern.hint_bytes_dynamic(Label::new(label))?;
     Ok(Arc::new(pattern.finalize()?))
 }
 
@@ -141,13 +141,13 @@ mod tests {
         
         // Create prover and add data
         let mut prover = prover_from_pattern::<DefaultHash>(Arc::clone(&pattern));
-        prover.add_bytes(Label::custom("msg"), b"test")?;
+        prover.add_bytes(Label::new("msg"), b"test")?;
         let proof = prover.finalize()?;
         
         // Verify
         let mut verifier = verifier_from_pattern::<DefaultHash>(pattern, &proof);
         let mut out = [0u8; 4];
-        verifier.fill_next_bytes(Label::custom("msg"), &mut out)?;
+        verifier.fill_next_bytes(Label::new("msg"), &mut out)?;
         verifier.finalize()?;
         
         assert_eq!(&out, b"test");

@@ -19,32 +19,32 @@ fn compute_protocol_iv() -> (u128, u128) {
 
     <PatternState<u8> as GroupPattern<Curve>>::message_points(
         &mut pattern,
-        Label::custom("generator"),
+        Label::new("generator"),
         1,
     )
     .unwrap();
     <PatternState<u8> as GroupPattern<Curve>>::message_points(
         &mut pattern,
-        Label::custom("public_key"),
+        Label::new("public_key"),
         1,
     )
     .unwrap();
     <PatternState<u8> as UnitPattern>::ratchet(&mut pattern).unwrap();
     <PatternState<u8> as GroupPattern<Curve>>::message_points(
         &mut pattern,
-        Label::custom("commitment"),
+        Label::new("commitment"),
         1,
     )
     .unwrap();
     <PatternState<u8> as FieldPattern<<Curve as ark_ec::PrimeGroup>::ScalarField>>::challenge_scalars(
         &mut pattern,
-        Label::custom("challenge"),
+        Label::new("challenge"),
         1,
     )
     .unwrap();
     <PatternState<u8> as FieldPattern<<Curve as ark_ec::PrimeGroup>::ScalarField>>::message_scalars(
         &mut pattern,
-        Label::custom("response"),
+        Label::new("response"),
         1,
     )
     .unwrap();
@@ -81,32 +81,32 @@ fn create_schnorr_pattern() -> PatternState<u8> {
 
     <PatternState<u8> as GroupPattern<Curve>>::message_points(
         &mut pattern,
-        Label::custom("generator"),
+        Label::new("generator"),
         1,
     )
     .unwrap();
     <PatternState<u8> as GroupPattern<Curve>>::message_points(
         &mut pattern,
-        Label::custom("public_key"),
+        Label::new("public_key"),
         1,
     )
     .unwrap();
     <PatternState<u8> as UnitPattern>::ratchet(&mut pattern).unwrap();
     <PatternState<u8> as GroupPattern<Curve>>::message_points(
         &mut pattern,
-        Label::custom("commitment"),
+        Label::new("commitment"),
         1,
     )
     .unwrap();
     <PatternState<u8> as FieldPattern<<Curve as ark_ec::PrimeGroup>::ScalarField>>::challenge_scalars(
         &mut pattern,
-        Label::custom("challenge"),
+        Label::new("challenge"),
         1,
     )
     .unwrap();
     <PatternState<u8> as FieldPattern<<Curve as ark_ec::PrimeGroup>::ScalarField>>::message_scalars(
         &mut pattern,
-        Label::custom("response"),
+        Label::new("response"),
         1,
     )
     .unwrap();

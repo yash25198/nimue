@@ -4,7 +4,7 @@ use ark_ff::{Field, Fp, FpConfig, PrimeField};
 use super::traits::{FieldTranscript, GroupTranscript};
 use crate::{
     codecs::bytes_uniform_modp,
-    pattern::{Label, Pattern},
+    pattern::{labels, Label, Pattern,Length},
     ByteTranscript, DuplexSpongeInterface, VerifierState,
 };
 
@@ -30,22 +30,22 @@ where
         // Pattern expects message_bytes structure: Begin Message -> Message units -> End Message
         // Manually create Message interaction and absorb (but don't read from proof)
         self.begin_message::<u8>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(buf.len()),
+        labels::BASE_FIELD_COEFFICIENTS,
+           Length::Fixed(buf.len()),
         );
 
         use crate::pattern::{Hierarchy, Interaction, Kind, Length};
         self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::Units,
+            labels::UNITS,
             Length::Fixed(buf.len()),
         ));
         self.duplex_sponge.absorb_unchecked(&buf);
 
         self.end_message::<u8>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(buf.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+           Length::Fixed(buf.len()),
         );
         self
     }
@@ -58,13 +58,13 @@ where
         let mut buf = vec![0u8; total_bytes];
         // Match the pattern structure: challenge_bytes creates begin_challenge + units + end_challenge
         self.begin_challenge::<u8>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(buf.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+           Length::Fixed(buf.len()),
         );
-        self.challenge_units(Label::Units, &mut buf);
+        self.challenge_units(labels::UNITS, &mut buf);
         self.end_challenge::<u8>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(buf.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+           Length::Fixed(buf.len()),
         );
         for (elem, chunk) in output.iter_mut().zip(buf.chunks_exact(element_size)) {
             *elem = F::from_base_prime_field_elems(
@@ -94,7 +94,7 @@ where
                 .expect("Serialization failed");
         }
         // Only absorb into sponge, don't read from proof
-        self.message_public_bytes(Label::SerializedGroup, &buf)
+        self.message_public_bytes(labels::SERIALIZED_GROUP, &buf)
     }
 }
 
@@ -120,22 +120,22 @@ where
         // Pattern expects message_bytes structure: Begin Message -> Message units -> End Message
         // Manually create Message interaction and absorb (but don't read from proof)
         self.begin_message::<Fp<C, N>>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(flattened.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+           Length::Fixed(flattened.len()),
         );
 
         use crate::pattern::{Hierarchy, Interaction, Kind, Length};
         self.pattern.interact(Interaction::new::<Fp<C, N>>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::Units,
+            labels::UNITS,
             Length::Fixed(flattened.len()),
         ));
         self.duplex_sponge.absorb_unchecked(&flattened);
 
         self.end_message::<Fp<C, N>>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(flattened.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+           Length::Fixed(flattened.len()),
         );
         self
     }
@@ -146,13 +146,13 @@ where
         let mut base_field_elements = vec![Fp::<C, N>::default(); total_elements];
         // Match the pattern structure: challenge_bytes creates begin_challenge + units + end_challenge
         self.begin_challenge::<Fp<C, N>>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(base_field_elements.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+           Length::Fixed(base_field_elements.len()),
         );
-        self.challenge_units(Label::Units, &mut base_field_elements);
+        self.challenge_units(labels::UNITS, &mut base_field_elements);
         self.end_challenge::<Fp<C, N>>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(base_field_elements.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+           Length::Fixed(base_field_elements.len()),
         );
         for (i, elem) in output.iter_mut().enumerate() {
             let start = i * ext_degree;
@@ -194,7 +194,7 @@ where
             coords.push(y);
         }
         // Only absorb into sponge, don't read from proof
-        self.message_public_units(Label::SerializedGroup, &coords)
+        self.message_public_units(labels::SERIALIZED_GROUP, &coords)
     }
 }
 
@@ -228,7 +228,7 @@ where
             coords.push(y);
         }
         // Only absorb into sponge, don't read from proof
-        self.message_public_units(Label::SerializedGroup, &coords)
+        self.message_public_units(labels::SERIALIZED_GROUP, &coords)
     }
 }
 
@@ -318,11 +318,11 @@ mod tests {
         point.serialize_compressed(&mut expected).unwrap();
 
         let mut pattern = PatternState::new();
-        pattern.message_points::<ark_curve25519::EdwardsProjective>(Label::custom("generator"), 1);
+        pattern.message_points::<ark_curve25519::EdwardsProjective>(Label::new("generator"), 1);
         let pattern = pattern.finalize();
 
         let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-        let _ = prover.message_points(Label::custom("generator"), &[point]);
+        let _ = prover.message_points(Label::new("generator"), &[point]);
 
         // Verify narg_string matches expected serialization
         assert_eq!(prover.narg_string(), expected);
@@ -333,7 +333,7 @@ mod tests {
 
         let mut out = [ark_curve25519::EdwardsProjective::ZERO];
         let _ = verifier
-            .read_message_points(Label::custom("generator"), &mut out)
+            .read_message_points(Label::new("generator"), &mut out)
             .unwrap();
 
         // Finalize the verifier to avoid panic on drop
@@ -406,17 +406,17 @@ mod tests {
         let scalars = [Fr::rand(&mut rng), Fr::rand(&mut rng)];
 
         let mut pattern = PatternState::new();
-        pattern.message_scalars::<Fr>(Label::custom("data"), 2);
+        pattern.message_scalars::<Fr>(Label::new("data"), 2);
         let pattern = pattern.finalize();
 
         let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-        prover.message_scalars(Label::custom("data"), &scalars);
+        prover.message_scalars(Label::new("data"), &scalars);
         let proof = prover.finalize();
 
         let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut received = [Fr::from(0); 2];
         verifier
-            .read_message_scalars(Label::custom("data"), &mut received)
+            .read_message_scalars(Label::new("data"), &mut received)
             .unwrap();
 
         assert_eq!(scalars, received);
@@ -431,25 +431,25 @@ mod tests {
 
         // Two patterns with different public parameters
         let mut pattern = PatternState::new();
-        pattern.message_public_scalars::<Fr>(Label::custom("public"), 1);
-        pattern.challenge_scalars::<Fr>(Label::custom("challenge"), 1);
+        pattern.message_public_scalars::<Fr>(Label::new("public"), 1);
+        pattern.challenge_scalars::<Fr>(Label::new("challenge"), 1);
         let pattern = pattern.finalize();
 
         // Prover 1 with public1
         let proof1 = {
             let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-            prover.message_public_scalars(Label::custom("public"), &[public1]);
+            prover.message_public_scalars(Label::new("public"), &[public1]);
             let mut chal = [Fr::from(0)];
-            prover.challenge_scalars(Label::custom("challenge"), &mut chal);
+            prover.challenge_scalars(Label::new("challenge"), &mut chal);
             prover.finalize()
         };
 
         // Prover 2 with public2
         let proof2 = {
             let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-            prover.message_public_scalars(Label::custom("public"), &[public2]);
+            prover.message_public_scalars(Label::new("public"), &[public2]);
             let mut chal = [Fr::from(0)];
-            prover.challenge_scalars(Label::custom("challenge"), &mut chal);
+            prover.challenge_scalars(Label::new("challenge"), &mut chal);
             prover.finalize()
         };
 
@@ -457,8 +457,8 @@ mod tests {
         let mut chal1 = [Fr::from(0)];
         {
             let mut verifier = VerifierState::<DefaultHash>::new(pattern.clone(), &proof1);
-            verifier.message_public_scalars(Label::custom("public"), &[public1]);
-            verifier.challenge_scalars(Label::custom("challenge"), &mut chal1);
+            verifier.message_public_scalars(Label::new("public"), &[public1]);
+            verifier.challenge_scalars(Label::new("challenge"), &mut chal1);
             verifier.finalize();
         }
 
@@ -466,8 +466,8 @@ mod tests {
         let mut chal2 = [Fr::from(0)];
         {
             let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof2);
-            verifier.message_public_scalars(Label::custom("public"), &[public2]);
-            verifier.challenge_scalars(Label::custom("challenge"), &mut chal2);
+            verifier.message_public_scalars(Label::new("public"), &[public2]);
+            verifier.challenge_scalars(Label::new("challenge"), &mut chal2);
             verifier.finalize();
         }
 

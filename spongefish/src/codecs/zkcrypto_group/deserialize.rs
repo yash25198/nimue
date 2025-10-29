@@ -13,7 +13,7 @@ where
 {
     fn fill_next_scalars(
         &mut self,
-        label: Label,
+        label: impl AsRef<str>,
         output: &mut [F],
     ) -> crate::ProofResult<&mut Self> {
         // Record the atomic interaction

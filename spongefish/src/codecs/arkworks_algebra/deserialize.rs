@@ -7,7 +7,7 @@ use ark_ff::{Field, Fp, FpConfig, PrimeField};
 
 use super::traits::{VerifierFieldTranscript, VerifierGroupTranscript};
 use crate::{
-    pattern::Label, DuplexSpongeInterface, ProofResult, VerifierByteTranscript, VerifierState,
+    pattern::{labels, Label}, DuplexSpongeInterface, ProofResult, VerifierByteTranscript, VerifierState,
 };
 
 // ============================================================================
@@ -29,7 +29,7 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         // Read all bytes at once - this matches the pattern's single message_bytes call
-        self.read_message_bytes(Label::BaseFieldCoefficients, &mut buf);
+        self.read_message_bytes(labels::BASE_FIELD_COEFFICIENTS, &mut buf);
 
         // Deserialize each scalar from its chunk
         for (elem, chunk) in output.iter_mut().zip(buf.chunks_exact(element_size)) {
@@ -52,7 +52,7 @@ where
         let mut buf = vec![0u8; total_bytes];
 
         // Read all bytes at once - this matches the pattern's single message_bytes call
-        self.read_message_bytes(Label::SerializedGroup, &mut buf);
+        self.read_message_bytes(labels::SERIALIZED_GROUP, &mut buf);
 
         for (i, o) in output.iter_mut().enumerate() {
             let start = i * point_size;
@@ -78,7 +78,7 @@ where
         let extension_degree = F::extension_degree() as usize;
         let mut flattened = vec![Fp::<C, N>::default(); output.len() * extension_degree];
 
-        self.read_message_units(Label::BaseFieldCoefficients, &mut flattened)?;
+        self.read_message_units(labels::BASE_FIELD_COEFFICIENTS, &mut flattened)?;
 
         // Convert base field elements back to extension field
         for (i, o) in output.iter_mut().enumerate() {
@@ -109,7 +109,7 @@ where
     ) -> ProofResult<&mut Self> {
         // Read all SerializedGroup (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
-        self.read_message_units(Label::SerializedGroup, &mut coords)?;
+        self.read_message_units(labels::SERIALIZED_GROUP, &mut coords)?;
 
         // Convert coordinate pairs to points using Short Weierstrass constructor
         for (i, o) in output.iter_mut().enumerate() {
@@ -142,7 +142,7 @@ where
     ) -> ProofResult<&mut Self> {
         // Read all SerializedGroup (2 per point: x and y) directly
         let mut coords = vec![Fp::<C, N>::default(); output.len() * 2];
-        self.read_message_units(Label::SerializedGroup, &mut coords)?;
+        self.read_message_units(labels::SERIALIZED_GROUP, &mut coords)?;
 
         // Convert coordinate pairs to points using Twisted Edwards constructor
         for (i, o) in output.iter_mut().enumerate() {
@@ -185,17 +185,17 @@ mod tests {
         let scalars = [BlsFr::rand(&mut rng), BlsFr::rand(&mut rng)];
 
         let mut pattern = PatternState::new();
-        pattern.message_scalars::<BlsFr>(Label::custom("data"), 2);
+        pattern.message_scalars::<BlsFr>(Label::new("data"), 2);
         let pattern = pattern.finalize();
 
         let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-        prover.message_scalars(Label::custom("data"), &scalars);
+        prover.message_scalars(Label::new("data"), &scalars);
         let proof = prover.finalize();
 
         let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
         let mut received = [BlsFr::from(0); 2];
         verifier
-            .read_message_scalars(Label::custom("data"), &mut received)
+            .read_message_scalars(Label::new("data"), &mut received)
             .expect("Failed to read scalars");
         verifier.finalize();
 
@@ -211,17 +211,17 @@ mod tests {
         ];
 
         let mut pattern = PatternState::new();
-        pattern.message_points::<EdwardsProjective>(Label::custom("commits"), 2);
+        pattern.message_points::<EdwardsProjective>(Label::new("commits"), 2);
         let pattern = pattern.finalize();
 
         let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-        prover.message_points(Label::custom("commits"), &points);
+        prover.message_points(Label::new("commits"), &points);
         let proof = prover.finalize();
 
         let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
         let mut received = [EdwardsProjective::default(); 2];
         verifier
-            .read_message_points(Label::custom("commits"), &mut received)
+            .read_message_points(Label::new("commits"), &mut received)
             .expect("Failed to read points");
         verifier.finalize();
 
@@ -234,17 +234,17 @@ mod tests {
         let points = [G1Projective::rand(&mut rng), G1Projective::rand(&mut rng)];
 
         let mut pattern = PatternState::new();
-        pattern.message_points::<G1Projective>(Label::custom("commits"), 2);
+        pattern.message_points::<G1Projective>(Label::new("commits"), 2);
         let pattern = pattern.finalize();
 
         let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-        prover.message_points(Label::custom("commits"), &points);
+        prover.message_points(Label::new("commits"), &points);
         let proof = prover.finalize();
 
         let mut verifier = VerifierState::<DefaultHash>::new(pattern, &proof);
         let mut received = [G1Projective::default(); 2];
         verifier
-            .read_message_points(Label::custom("commits"), &mut received)
+            .read_message_points(Label::new("commits"), &mut received)
             .expect("Failed to read points");
         verifier.finalize();
 

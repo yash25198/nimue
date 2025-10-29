@@ -1,4 +1,4 @@
-use super::{Hierarchy, Interaction, InteractionPattern, Kind, Label, Length};
+use super::{labels, Hierarchy, Interaction, InteractionPattern, Kind, Label, Length};
 use crate::codecs::unit;
 
 /// Builder for constructing interaction patterns.
@@ -133,14 +133,14 @@ impl PatternState {
             wrapped.push(Interaction::new::<()>(
                 Hierarchy::Begin,
                 Kind::Protocol,
-                Label::Protocol,
+                labels::PROTOCOL,
                 Length::None,
             ));
             wrapped.extend(self.interactions);
             wrapped.push(Interaction::new::<()>(
                 Hierarchy::End,
                 Kind::Protocol,
-                Label::Protocol,
+                labels::PROTOCOL,
                 Length::None,
             ));
             self.interactions = wrapped;
@@ -179,12 +179,12 @@ impl super::Pattern for PatternState {
         self
     }
 
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
+    fn begin<T: ?Sized>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> &mut Self {
         self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length));
         self
     }
 
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
+    fn end<T: ?Sized>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> &mut Self {
         self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length));
         self
     }
@@ -197,13 +197,13 @@ impl unit::Pattern for PatternState {
         self.interact(Interaction::new::<()>(
             Hierarchy::Atomic,
             Kind::Protocol,
-            Label::Ratchet,
+            labels::RATCHET,
             Length::None,
         ));
         self
     }
 
-    fn message_public_unit(&mut self, label: Label) -> &mut Self {
+    fn message_public_unit(&mut self, label: impl AsRef<str>) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Public,
@@ -213,7 +213,7 @@ impl unit::Pattern for PatternState {
         self
     }
 
-    fn message_public_units(&mut self, label: Label, size: usize) -> &mut Self {
+    fn message_public_units(&mut self, label: impl AsRef<str>, size: usize) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Public,
@@ -223,7 +223,7 @@ impl unit::Pattern for PatternState {
         self
     }
 
-    fn message_unit(&mut self, label: Label) -> &mut Self {
+    fn message_unit(&mut self, label: impl AsRef<str>) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
@@ -233,7 +233,7 @@ impl unit::Pattern for PatternState {
         self
     }
 
-    fn message_units(&mut self, label: Label, size: usize) -> &mut Self {
+    fn message_units(&mut self, label: impl AsRef<str>, size: usize) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
@@ -243,7 +243,7 @@ impl unit::Pattern for PatternState {
         self
     }
 
-    fn challenge_unit(&mut self, label: Label) -> &mut Self {
+    fn challenge_unit(&mut self, label: impl AsRef<str>) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Challenge,
@@ -253,7 +253,7 @@ impl unit::Pattern for PatternState {
         self
     }
 
-    fn challenge_units(&mut self, label: Label, size: usize) -> &mut Self {
+    fn challenge_units(&mut self, label: impl AsRef<str>, size: usize) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Challenge,
@@ -263,7 +263,7 @@ impl unit::Pattern for PatternState {
         self
     }
 
-    fn hint_bytes(&mut self, label: Label, size: usize) -> &mut Self {
+    fn hint_bytes(&mut self, label: impl AsRef<str>, size: usize) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Hint,
@@ -273,7 +273,7 @@ impl unit::Pattern for PatternState {
         self
     }
 
-    fn hint_bytes_dynamic(&mut self, label: Label) -> &mut Self {
+    fn hint_bytes_dynamic(&mut self, label: impl AsRef<str>) -> &mut Self {
         self.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Hint,
@@ -317,7 +317,7 @@ mod tests {
     fn test_pattern_state_error_propagation() {
         let mut state = PatternState::new();
         // Create an unmatched end
-        state.end::<()>(Label::Protocol, Kind::Protocol, Length::None);
+        state.end::<()>(labels::PROTOCOL, Kind::Protocol, Length::None);
         state.finalize();
     }
 

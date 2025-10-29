@@ -8,6 +8,7 @@ use crate::{
     duplex_sponge::Unit,
     pattern::{
         Hierarchy, Interaction, InteractionPattern, Kind, Label, Length, Pattern, PatternPlayer,
+        labels,
     },
     ByteTranscript, MessageWriter, UnitTranscript,
 };
@@ -123,14 +124,14 @@ where
             .map(|i| {
                 i.hierarchy() == Hierarchy::Begin
                     && i.kind() == Kind::Protocol
-                    && *i.label() == Label::Protocol
+                    && i.label() == &labels::PROTOCOL
             })
             .unwrap_or(false);
 
         if has_protocol_wrapper {
             state
                 .pattern
-                .begin::<()>(Label::Protocol, Kind::Protocol, Length::None);
+                .begin::<()>(labels::PROTOCOL, Kind::Protocol, Length::None);
         }
 
         state
@@ -141,7 +142,7 @@ where
     /// # Panics
     ///
     /// Panics if the interaction doesn't match the expected pattern.
-    pub fn add_units(&mut self, label: Label, input: &[U]) {
+    pub fn add_units(&mut self, label: impl AsRef<str>, input: &[U]) {
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
@@ -165,7 +166,7 @@ where
         self.pattern.interact(Interaction::new::<()>(
             Hierarchy::Atomic,
             Kind::Protocol,
-            Label::Ratchet,
+            labels::RATCHET,
             Length::None,
         ));
         self.duplex_sponge.ratchet_unchecked();
@@ -176,7 +177,7 @@ where
     /// # Panics
     ///
     /// Panics if the interaction doesn't match the expected pattern.
-    pub fn hint_bytes(&mut self, label: Label, hint: &[u8]) {
+    pub fn hint_bytes(&mut self, label: impl AsRef<str>, hint: &[u8]) {
         self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Hint,
@@ -194,7 +195,7 @@ where
     /// # Panics
     ///
     /// Panics if the interaction doesn't match the expected pattern.
-    pub fn public_units(&mut self, label: Label, input: &[U]) {
+    pub fn public_units(&mut self, label: impl AsRef<str>, input: &[U]) {
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
@@ -215,7 +216,7 @@ where
     /// # Panics
     ///
     /// Panics if the interaction doesn't match the expected pattern.
-    pub fn fill_challenge_units(&mut self, label: Label, output: &mut [U]) {
+    pub fn fill_challenge_units(&mut self, label: impl AsRef<str>, output: &mut [U]) {
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Challenge,
@@ -247,13 +248,13 @@ where
             .map(|i| {
                 i.hierarchy() == Hierarchy::End
                     && i.kind() == Kind::Protocol
-                    && *i.label() == Label::Protocol
+                    && i.label() == &labels::PROTOCOL
             })
             .unwrap_or(false);
 
         if has_protocol_end {
             self.pattern
-                .end::<()>(Label::Protocol, Kind::Protocol, Length::None);
+                .end::<()>(labels::PROTOCOL, Kind::Protocol, Length::None);
         }
 
         self.pattern.finalize();
@@ -262,7 +263,7 @@ where
         self.narg_string
     }
 
-    pub fn message_units(&mut self, label: Label, input: &[U]) -> &mut Self {
+    pub fn message_units(&mut self, label: impl AsRef<str>, input: &[U]) -> &mut Self {
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Message,
@@ -278,7 +279,7 @@ where
         self
     }
 
-    pub fn message_public_units(&mut self, label: Label, input: &[U]) -> &mut Self {
+    pub fn message_public_units(&mut self, label: impl AsRef<str>, input: &[U]) -> &mut Self {
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Public,
@@ -293,7 +294,7 @@ where
         self
     }
 
-    pub fn challenge_units(&mut self, label: Label, output: &mut [U]) -> &mut Self {
+    pub fn challenge_units(&mut self, label: impl AsRef<str>, output: &mut [U]) -> &mut Self {
         self.pattern.interact(Interaction::new::<U>(
             Hierarchy::Atomic,
             Kind::Challenge,
@@ -323,11 +324,11 @@ where
     H: DuplexSpongeInterface<U>,
     R: RngCore + CryptoRng,
 {
-    fn message_public_units(&mut self, label: Label, input: &[U]) -> &mut Self {
+    fn message_public_units(&mut self, label: impl AsRef<str>, input: &[U]) -> &mut Self {
         ProverState::message_public_units(self, label, input)
     }
 
-    fn challenge_units(&mut self, label: Label, output: &mut [U]) -> &mut Self {
+    fn challenge_units(&mut self, label: impl AsRef<str>, output: &mut [U]) -> &mut Self {
         ProverState::challenge_units(self, label, output)
     }
 }
@@ -338,34 +339,34 @@ where
     R: RngCore + CryptoRng,
 {
     fn message_bytes_unchecked(&mut self, input: &[u8]) -> &mut Self {
-        self.message_units(Label::Units, input)
+        self.message_units(labels::UNITS, input)
     }
 
     fn message_public_bytes_unchecked(&mut self, input: &[u8]) -> &mut Self {
         // Only absorb into sponge, don't write to proof
-        self.message_public_units(Label::Units, input)
+        self.message_public_units(labels::UNITS, input)
     }
 
     fn challenge_bytes_unchecked(&mut self, output: &mut [u8]) -> &mut Self {
-        self.challenge_units(Label::Units, output)
+        self.challenge_units(labels::UNITS, output)
     }
 
-    fn message_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
-        self.begin_message::<u8>(label.clone(), Length::Fixed(input.len()));
+    fn message_bytes(&mut self, label: impl AsRef<str>, input: &[u8]) -> &mut Self {
+        self.begin_message::<u8>(&label, Length::Fixed(input.len()));
         self.message_bytes_unchecked(input);
-        self.end_message::<u8>(label, Length::Fixed(input.len()));
+        self.end_message::<u8>(&label, Length::Fixed(input.len()));
         self
     }
 
-    fn challenge_bytes(&mut self, label: Label, output: &mut [u8]) -> &mut Self {
-        self.begin_challenge::<u8>(label.clone(), Length::Fixed(output.len()));
+    fn challenge_bytes(&mut self, label: impl AsRef<str>, output: &mut [u8]) -> &mut Self {
+        self.begin_challenge::<u8>(&label, Length::Fixed(output.len()));
         self.challenge_bytes_unchecked(output);
         self.end_challenge::<u8>(label, Length::Fixed(output.len()));
         self
     }
 
-    fn message_public_bytes(&mut self, label: Label, input: &[u8]) -> &mut Self {
-        self.begin_public::<u8>(label.clone(), Length::Fixed(input.len()));
+    fn message_public_bytes(&mut self, label: impl AsRef<str>, input: &[u8]) -> &mut Self {
+        self.begin_public::<u8>(&label, Length::Fixed(input.len()));
         self.message_public_bytes_unchecked(input);
         self.end_public::<u8>(label, Length::Fixed(input.len()));
         self
@@ -376,7 +377,7 @@ where
     H: DuplexSpongeInterface<u8>,
     R: RngCore + CryptoRng,
 {
-    fn message_units(&mut self, label: Label, input: &[u8]) -> &mut Self {
+    fn message_units(&mut self, label: impl AsRef<str>, input: &[u8]) -> &mut Self {
         ProverState::message_units(self, label, input)
     }
 }
@@ -406,12 +407,12 @@ where
         self
     }
 
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
+    fn begin<T: ?Sized>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> &mut Self {
         self.pattern.begin::<T>(label, kind, length);
         self
     }
 
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
+    fn end<T: ?Sized>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> &mut Self {
         self.pattern.end::<T>(label, kind, length);
         self
     }
@@ -428,12 +429,12 @@ mod tests {
     #[test]
     fn test_prover_state_add_units_and_rng_differs() {
         let mut pattern = PatternState::new();
-        pattern.message_bytes(Label::Bytes, 4);
+        pattern.message_bytes(Label::new("bytes"), 4);
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(pattern);
 
-        pstate.message_bytes(Label::Bytes, &[1, 2, 3, 4]);
+        pstate.message_bytes(Label::new("bytes"), &[1, 2, 3, 4]);
 
         let mut buf = [0u8; 8];
         pstate.rng().fill_bytes(&mut buf);
@@ -444,10 +445,10 @@ mod tests {
     #[test]
     fn test_prover_state_public_units_does_not_affect_narg() {
         let mut pattern = PatternState::new();
-        pattern.message_public_units(Label::custom("public_units"), 4);
+        pattern.message_public_units(Label::new("bytes"), 4);
         let pattern = pattern.finalize();
         let mut pstate: ProverState = ProverState::from(pattern);
-        pstate.message_public_units(Label::custom("public_units"), &[1, 2, 3, 4]);
+        pstate.message_public_units(Label::new("bytes"), &[1, 2, 3, 4]);
         assert_eq!(pstate.narg_string(), b"");
         let _proof = pstate.finalize();
     }
@@ -472,13 +473,13 @@ mod tests {
     #[test]
     fn test_add_units_appends_to_narg_string() {
         let mut pattern = PatternState::new();
-        pattern.message_units(Label::Units, 3);
+        pattern.message_units(labels::UNITS, 3);
         let pattern = pattern.finalize();
         let mut pstate: ProverState = ProverState::from(pattern);
 
         let input = [42, 43, 44];
 
-        pstate.add_units(Label::Units, &input);
+        pstate.add_units(labels::UNITS, &input);
         let proof = pstate.finalize();
         assert_eq!(proof, &input);
     }
@@ -487,11 +488,11 @@ mod tests {
     #[should_panic(expected = "Unexpected interaction")]
     fn test_add_units_too_many_elements_should_panic() {
         let mut pattern = PatternState::new();
-        pattern.message_units(Label::Units, 2);
+        pattern.message_units(labels::UNITS, 2);
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(pattern);
-        pstate.add_units(Label::Units, &[1, 2, 3]);
+        pstate.add_units(labels::UNITS, &[1, 2, 3]);
 
         pstate.finalize();
     }
@@ -511,7 +512,7 @@ mod tests {
     #[should_panic(expected = "Unexpected interaction")]
     fn test_ratchet_fails_when_not_expected() {
         let mut pattern = PatternState::new();
-        pattern.message_units(Label::Units, 4);
+        pattern.message_units(labels::UNITS, 4);
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(pattern);
@@ -522,14 +523,14 @@ mod tests {
     #[test]
     fn test_fill_challenge_units() {
         let mut pattern = PatternState::new();
-        pattern.begin_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8));
-        pattern.challenge_units(Label::Units, 8);
-        pattern.end_challenge::<u8>(Label::custom("fill_challenge_units"), Length::Fixed(8));
+        pattern.begin_challenge::<u8>(labels::UNITS, Length::Fixed(8));
+        pattern.challenge_units(labels::UNITS, 8);
+        pattern.end_challenge::<u8>(labels::UNITS, Length::Fixed(8));
         let pattern = pattern.finalize();
 
         let mut pstate: ProverState = ProverState::from(pattern);
         let mut out = [0u8; 8];
-        pstate.challenge_bytes(Label::custom("fill_challenge_units"), &mut out);
+        pstate.challenge_bytes(labels::UNITS, &mut out);
         assert_ne!(out, [0u8; 8], "Challenge bytes should not be all zeros");
         let _proof = pstate.finalize();
     }
@@ -537,7 +538,7 @@ mod tests {
     #[test]
     fn test_rng_entropy_changes_with_transcript() {
         let mut pattern = PatternState::new();
-        pattern.message_bytes(Label::Bytes, 3);
+        pattern.message_bytes(Label::new("bytes"), 3);
         let pattern = pattern.finalize();
 
         let mut p1: ProverState = ProverState::from(pattern.clone());
@@ -547,7 +548,7 @@ mod tests {
         let mut b = [0u8; 16];
 
         p1.rng().fill_bytes(&mut a);
-        p2.message_bytes(Label::Bytes, &[1, 2, 3]);
+        p2.message_bytes(Label::new("bytes"), &[1, 2, 3]);
         p2.rng().fill_bytes(&mut b);
 
         assert_ne!(a, b);
@@ -558,37 +559,37 @@ mod tests {
     #[test]
     fn test_add_units_multiple_accumulates() {
         let mut pattern = PatternState::new();
-        pattern.message_units(Label::Units, 2);
-        pattern.message_units(Label::Units, 3);
+        pattern.message_units(labels::UNITS, 2);
+        pattern.message_units(labels::UNITS, 3);
         let pattern = pattern.finalize();
 
         let mut p: ProverState = ProverState::from(pattern);
-        p.add_units(Label::Units, &[10, 11]);
-        p.add_units(Label::Units, &[20, 21, 22]);
+        p.add_units(labels::UNITS, &[10, 11]);
+        p.add_units(labels::UNITS, &[20, 21, 22]);
         assert_eq!(p.finalize(), &[10, 11, 20, 21, 22]);
     }
 
     #[test]
     fn test_narg_string_round_trip_check() {
         let mut pattern = PatternState::new();
-        pattern.message_units(Label::Units, 5);
+        pattern.message_units(labels::UNITS, 5);
         let pattern = pattern.finalize();
 
         let mut p: ProverState = ProverState::from(pattern);
         let msg = b"zkp42";
-        p.add_units(Label::Units, msg);
+        p.add_units(labels::UNITS, msg);
         assert_eq!(p.finalize(), msg);
     }
 
     #[test]
     fn test_hint_bytes_appends_hint_length_and_data() {
         let mut pattern = PatternState::new();
-        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
+        pattern.hint_bytes_dynamic("hint");
         let pattern = pattern.finalize();
 
         let mut prover: ProverState = ProverState::from(pattern);
         let hint = b"abc123";
-        prover.hint_bytes(Label::custom("hint_bytes"), hint);
+        prover.hint_bytes(Label::new("hint"), hint);
         let expected = [6, 0, 0, 0, b'a', b'b', b'c', b'1', b'2', b'3'];
         assert_eq!(prover.finalize(), &expected);
     }
@@ -596,11 +597,11 @@ mod tests {
     #[test]
     fn test_hint_bytes_empty_hint_is_encoded_correctly() {
         let mut pattern = PatternState::new();
-        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
+        pattern.hint_bytes_dynamic("hint");
         let pattern = pattern.finalize();
 
         let mut prover: ProverState = ProverState::from(pattern);
-        prover.hint_bytes(Label::custom("hint_bytes"), b"");
+        prover.hint_bytes(Label::new("hint"), b"");
         assert_eq!(prover.finalize(), &[0, 0, 0, 0]);
     }
 
@@ -610,22 +611,22 @@ mod tests {
         let pattern = PatternState::new().finalize();
 
         let mut prover: ProverState = ProverState::from(pattern);
-        prover.hint_bytes(Label::custom("hint_bytes"), b"some_hint");
+        prover.hint_bytes(Label::new("hint_bytes"), b"some_hint");
         prover.finalize();
     }
 
     #[test]
     fn test_hint_bytes_is_deterministic() {
         let mut pattern = PatternState::new();
-        pattern.hint_bytes_dynamic(Label::custom("hint_bytes"));
+        pattern.hint_bytes_dynamic("hint_bytes");
         let pattern = pattern.finalize();
 
         let hint = b"zkproof_hint";
         let mut prover1: ProverState = ProverState::from(pattern.clone());
         let mut prover2: ProverState = ProverState::from(pattern);
 
-        prover1.hint_bytes(Label::custom("hint_bytes"), hint);
-        prover2.hint_bytes(Label::custom("hint_bytes"), hint);
+        prover1.hint_bytes(Label::new("hint_bytes"), hint);
+        prover2.hint_bytes(Label::new("hint_bytes"), hint);
 
         assert_eq!(
             prover1.narg_string(),

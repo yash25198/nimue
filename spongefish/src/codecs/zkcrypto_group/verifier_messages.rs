@@ -21,7 +21,7 @@ where
 {
     fn fill_challenge_scalars(
         &mut self,
-        label: Label,
+        label: impl AsRef<str>,
         output: &mut [F],
     ) -> Result<&mut Self, PatternError> {
         let mut buf = vec![0; bytes_uniform_modp(F::NUM_BITS)];

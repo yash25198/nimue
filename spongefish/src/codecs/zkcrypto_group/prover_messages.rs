@@ -13,7 +13,7 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_scalars(&mut self, label: Label, input: &[F]) -> Result<&mut Self, PatternError> {
+    fn add_scalars(&mut self, label: impl AsRef<str>, input: &[F]) -> Result<&mut Self, PatternError> {
         // Record the atomic interaction
         self.pattern.interact(Interaction::new::<F>(
             Hierarchy::Atomic,
@@ -58,7 +58,7 @@ where
     H: DuplexSpongeInterface,
     R: RngCore + CryptoRng,
 {
-    fn add_points(&mut self, label: Label, input: &[G]) -> Result<&mut Self, PatternError> {
+    fn add_points(&mut self, label: impl AsRef<str>, input: &[G]) -> Result<&mut Self, PatternError> {
         // Record the atomic interaction
         self.pattern.interact(Interaction::new::<G>(
             Hierarchy::Atomic,

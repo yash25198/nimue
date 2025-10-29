@@ -48,11 +48,11 @@
 //!
 //! // Define a protocol pattern
 //! let mut pattern = PatternState::new();
-//! pattern.begin_protocol(Label::custom("Schnorr"))?;
-//! pattern.message_bytes(Label::custom("commitment"), 32)?;
-//! pattern.challenge_bytes(Label::custom("challenge"), 32)?;
-//! pattern.message_bytes(Label::custom("response"), 32)?;
-//! pattern.end_protocol(Label::custom("Schnorr"))?;
+//! pattern.begin_protocol(Label::new("Schnorr"))?;
+//! pattern.message_bytes(Label::new("commitment"), 32)?;
+//! pattern.challenge_bytes(Label::new("challenge"), 32)?;
+//! pattern.message_bytes(Label::new("response"), 32)?;
+//! pattern.end_protocol(Label::new("Schnorr"))?;
 //!
 //! // Finalize to get immutable pattern
 //!  let pattern = pattern.finalize();
@@ -77,7 +77,7 @@ mod pattern_state;
 
 pub use self::{
     errors::PatternError,
-    interaction::{Hierarchy, Interaction, Kind, Label, Length},
+    interaction::{labels, Hierarchy, Interaction, Kind, Label, Length},
     interaction_pattern::{InteractionPattern, TranscriptError},
     pattern_player::{PatternPlayer, PatternPlayerInner},
     pattern_state::PatternState,
@@ -99,13 +99,13 @@ pub use self::{
 ///
 /// ```ignore
 /// impl Pattern for MyProtocol {
-///     fn begin<T>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+///     fn begin<T>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
 ///         // Track that we're beginning a new interaction group
 ///         self.hierarchy_stack.push(Interaction::new::<T>(Hierarchy::Begin, kind, label, length));
 ///         Ok(self)
 ///     }
 ///
-///     fn end<T>(&mut self, label: Label, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
+///     fn end<T>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> Result<&mut Self, PatternError> {
 ///         // Validate and pop from hierarchy stack
 ///         // ...
 ///         Ok(self)
@@ -117,58 +117,58 @@ pub trait Pattern {
     fn abort(&mut self) -> &mut Self;
 
     /// Begin of a group of interactions.
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self;
+    fn begin<T: ?Sized>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> &mut Self;
 
     /// End of a group of interactions.
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self;
+    fn end<T: ?Sized>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> &mut Self;
 
     /// Begin of a subprotocol.
-    fn begin_protocol(&mut self, label: Label) -> &mut Self {
+    fn begin_protocol(&mut self, label: impl AsRef<str>) -> &mut Self {
         self.begin::<()>(label, Kind::Protocol, Length::None)
     }
 
     /// End of a subprotocol.
-    fn end_protocol(&mut self, label: Label) -> &mut Self {
+    fn end_protocol(&mut self, label: impl AsRef<str>) -> &mut Self {
         self.end::<()>(label, Kind::Protocol, Length::None)
     }
 
     /// Begin of a public message interaction.
-    fn begin_public<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+    fn begin_public<T: ?Sized>(&mut self, label: impl AsRef<str>, length: Length) -> &mut Self {
         self.begin::<T>(label, Kind::Public, length)
     }
 
     /// End of a public message interaction.
-    fn end_public<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+    fn end_public<T: ?Sized>(&mut self, label: impl AsRef<str>, length: Length) -> &mut Self {
         self.end::<T>(label, Kind::Public, length)
     }
 
     /// Begin of a message interaction.
-    fn begin_message<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+    fn begin_message<T: ?Sized>(&mut self, label: impl AsRef<str>, length: Length) -> &mut Self {
         self.begin::<T>(label, Kind::Message, length)
     }
 
     /// End of a message interaction.
-    fn end_message<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+    fn end_message<T: ?Sized>(&mut self, label: impl AsRef<str>, length: Length) -> &mut Self {
         self.end::<T>(label, Kind::Message, length)
     }
 
     /// Begin of a hint interaction.
-    fn begin_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+    fn begin_hint<T: ?Sized>(&mut self, label: impl AsRef<str>, length: Length) -> &mut Self {
         self.begin::<T>(label, Kind::Hint, length)
     }
 
     /// End of a hint interaction.
-    fn end_hint<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+    fn end_hint<T: ?Sized>(&mut self, label: impl AsRef<str>, length: Length) -> &mut Self {
         self.end::<T>(label, Kind::Hint, length)
     }
 
     /// Begin of a challenge interaction.
-    fn begin_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+    fn begin_challenge<T: ?Sized>(&mut self, label: impl AsRef<str>, length: Length) -> &mut Self {
         self.begin::<T>(label, Kind::Challenge, length)
     }
 
     /// End of a challenge interaction.
-    fn end_challenge<T: ?Sized>(&mut self, label: Label, length: Length) -> &mut Self {
+    fn end_challenge<T: ?Sized>(&mut self, label: impl AsRef<str>, length: Length) -> &mut Self {
         self.end::<T>(label, Kind::Challenge, length)
     }
 }
@@ -188,26 +188,26 @@ mod tests {
     fn test_record_playback() {
         // Record a new pattern
         let mut pattern = PatternState::new();
-        pattern.begin_protocol(Label::custom("Example protocol"));
+        pattern.begin_protocol(labels::PROTOCOL);
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("nonce"),
+            "challenge",
             Length::Scalar,
         ));
-        pattern.end_protocol(Label::custom("Example protocol"));
+        pattern.end_protocol(labels::PROTOCOL);
         let pattern = pattern.finalize();
 
         // Play it back exactly
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.begin_protocol(Label::custom("Example protocol"));
+        playback.begin_protocol(labels::PROTOCOL);
         playback.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("nonce"),
+            "challenge",
             Length::Scalar,
         ));
-        playback.end_protocol(Label::custom("Example protocol"));
+        playback.end_protocol(labels::PROTOCOL);
         playback.finalize();
     }
 
@@ -220,28 +220,28 @@ mod tests {
         let pattern = pattern.finalize();
 
         let mut playback = PatternPlayer::new(pattern.into());
-        playback.begin_protocol(Label::Protocol);
+        playback.begin_protocol(labels::PROTOCOL);
         playback.interact(Interaction::new::<()>(
             Hierarchy::Atomic,
             Kind::Protocol,
-            Label::Ratchet,
+            labels::RATCHET,
             Length::None,
         ));
-        playback.end_protocol(Label::Protocol);
+        playback.end_protocol(labels::PROTOCOL);
     }
 
     #[test]
     #[should_panic(expected = "Mismatched begin and end")]
     fn panics_if_record_begin_end_mismatch() {
         let mut pattern = PatternState::new();
-        pattern.begin_protocol(Label::custom("Example protocol"));
+        pattern.begin_protocol(labels::PROTOCOL);
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("nonce"),
+            "challenge",
             Length::Scalar,
         ));
-        pattern.end_protocol(Label::custom("Invalid example protocol"));
+        pattern.end_protocol(labels::PROTOCOL);
         pattern.finalize();
     }
 
@@ -252,7 +252,7 @@ mod tests {
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("nonce"),
+            "challenge",
             Length::Scalar,
         ));
         let pattern = pattern.finalize();
@@ -261,14 +261,14 @@ mod tests {
         playback.interact(Interaction::new::<()>(
             Hierarchy::Begin,
             Kind::Protocol,
-            Label::Protocol,
+             labels::PROTOCOL,
             Length::None,
         ));
         // This should panic
         playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("nonce"),
+            "challenge",
             Length::Scalar,
         ));
     }
@@ -280,7 +280,7 @@ mod tests {
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::custom("nonce"),
+            "message",
             Length::Scalar,
         ));
         let pattern = pattern.finalize();
@@ -289,14 +289,14 @@ mod tests {
         playback.interact(Interaction::new::<()>(
             Hierarchy::Begin,
             Kind::Protocol,
-            Label::Protocol,
+             labels::PROTOCOL,
             Length::None,
         ));
         // This should panic
         playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Public,
-            Label::custom("nonce"),
+            "public",
             Length::Scalar,
         ));
     }
@@ -308,7 +308,7 @@ mod tests {
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("nonce"),
+            "challenge",
             Length::Scalar,
         ));
         let pattern = pattern.finalize();
@@ -317,14 +317,14 @@ mod tests {
         playback.interact(Interaction::new::<()>(
             Hierarchy::Begin,
             Kind::Protocol,
-            Label::Protocol,
+             labels::PROTOCOL,
             Length::None,
         ));
         // This should panic
         playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("invalid"),
+            "challenge",
             Length::Scalar,
         ));
     }
@@ -336,7 +336,7 @@ mod tests {
         pattern.interact(Interaction::new::<u64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("nonce"),
+            "challenge",
             Length::Scalar,
         ));
         let pattern = pattern.finalize();
@@ -345,14 +345,14 @@ mod tests {
         playback.interact(Interaction::new::<()>(
             Hierarchy::Begin,
             Kind::Protocol,
-            Label::Protocol,
+             labels::PROTOCOL,
             Length::None,
         ));
         // This should panic
         playback.interact(Interaction::new::<f64>(
             Hierarchy::Atomic,
             Kind::Challenge,
-            Label::custom("nonce"),
+            "challenge",
             Length::Fixed(1),
         ));
     }

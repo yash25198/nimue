@@ -197,19 +197,19 @@ mod tests {
             Interaction::new::<usize>(
                 Hierarchy::Begin,
                 Kind::Protocol,
-                Label::custom("test"),
+                Label::new("test"),
                 Length::None,
             ),
             Interaction::new::<Vec<f64>>(
                 Hierarchy::Atomic,
                 Kind::Message,
-                Label::custom("test-message"),
+                Label::new("test-message"),
                 Length::Scalar,
             ),
             Interaction::new::<usize>(
                 Hierarchy::End,
                 Kind::Protocol,
-                Label::custom("test"),
+                Label::new("test"),
                 Length::None,
             ),
         ])

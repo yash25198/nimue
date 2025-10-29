@@ -175,12 +175,12 @@ impl super::Pattern for PatternPlayer {
         self
     }
 
-    fn begin<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
+    fn begin<T: ?Sized>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> &mut Self {
         self.interact(Interaction::new::<T>(Hierarchy::Begin, kind, label, length));
         self
     }
 
-    fn end<T: ?Sized>(&mut self, label: Label, kind: Kind, length: Length) -> &mut Self {
+    fn end<T: ?Sized>(&mut self, label: impl AsRef<str>, kind: Kind, length: Length) -> &mut Self {
         self.interact(Interaction::new::<T>(Hierarchy::End, kind, label, length));
         self
     }
@@ -212,14 +212,14 @@ mod tests {
         let pattern = Arc::new(pattern_state.finalize());
 
         let mut player = PatternPlayer::new(pattern);
-        player.begin_protocol(Label::Protocol);
+        player.begin_protocol(labels::PROTOCOL);
         player.interact(crate::pattern::interaction::Interaction::new::<()>(
             crate::pattern::interaction::Hierarchy::Atomic,
             crate::pattern::interaction::Kind::Protocol,
-            Label::Ratchet,
+            labels::RATCHET,
             crate::pattern::Length::None,
         ));
-        player.end_protocol(Label::Protocol);
+        player.end_protocol(labels::PROTOCOL);
         player.finalize();
     }
 
@@ -232,7 +232,7 @@ mod tests {
         let pattern = Arc::new(pattern_state.finalize());
 
         let mut player = PatternPlayer::new(pattern);
-        player.begin_protocol(Label::Protocol);
+        player.begin_protocol(labels::PROTOCOL);
 
         // Try to interact with wrong kind (message instead of ratchet)
         player.begin_message::<u8>(Label::from("msg"), crate::pattern::Length::Fixed(32));
@@ -245,7 +245,7 @@ mod tests {
         let pattern = Arc::new(pattern_state.finalize());
 
         let mut player = PatternPlayer::new(pattern);
-        player.begin_protocol(Label::Protocol);
+        player.begin_protocol(labels::PROTOCOL);
 
         player.abort();
     }

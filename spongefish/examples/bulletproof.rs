@@ -26,22 +26,22 @@ fn bulletproof_pattern<G: CurveGroup>(size: usize) -> PatternState {
 
     // Commitment phase
     pattern
-        .begin_protocol(Label::custom("bulletproof"))
-        .message_points::<G>(Label::custom("commitment"), 1)
+        .begin_protocol(Label::new("bulletproof"))
+        .message_points::<G>(Label::new("commitment"), 1)
         .ratchet();
 
     // Recursive folding rounds (log2(size) rounds)
     let num_rounds = (size as f64).log2() as usize;
     for _ in 0..num_rounds {
         pattern
-            .message_points::<G>(Label::custom("round"), 2)
-            .message_scalars::<G::ScalarField>(Label::custom("challenge"), 1);
+            .message_points::<G>(Label::new("round"), 2)
+            .message_scalars::<G::ScalarField>(Label::new("challenge"), 1);
     }
 
     // Final opening
     pattern
-        .message_scalars::<G::ScalarField>(Label::custom("final"), 2)
-        .end_protocol(Label::custom("bulletproof"));
+        .message_scalars::<G::ScalarField>(Label::new("final"), 2)
+        .end_protocol(Label::new("bulletproof"));
 
     pattern
 }
@@ -62,7 +62,7 @@ where
 
     if witness.0.len() == 1 {
         assert_eq!(generators.0.len(), 1);
-        prover.message_scalars(Label::custom("final"), &[witness.0[0], witness.1[0]]);
+        prover.message_scalars(Label::new("final"), &[witness.0[0], witness.1[0]]);
         return Ok(());
     }
 
@@ -83,8 +83,8 @@ where
 
     let x = G::ScalarField::rand(prover.rng());
     prover
-        .message_points(Label::custom("round"), &[left, right])
-        .message_scalars(Label::custom("challenge"), &[x]);
+        .message_points(Label::new("round"), &[left, right])
+        .message_scalars(Label::new("challenge"), &[x]);
     let x_inv = x.inverse().expect("Challenge inverse failed");
 
     let new_g = fold_generators(g_left, g_right, &x_inv, &x);
@@ -124,7 +124,7 @@ where
 
     while n != 1 {
         let mut lr_buf = [G::default(); 2];
-        verifier.read_message_points(Label::custom("round"), &mut lr_buf)?;
+        verifier.read_message_points(Label::new("round"), &mut lr_buf)?;
         let [left, right] = lr_buf;
 
         n /= 2;
@@ -132,7 +132,7 @@ where
         let (h_left, h_right) = h.split_at(n);
 
         let mut x_buf = [G::ScalarField::default(); 1];
-        verifier.read_message_scalars(Label::custom("challenge"), &mut x_buf)?;
+        verifier.read_message_scalars(Label::new("challenge"), &mut x_buf)?;
         let x = x_buf[0];
         let x_inv = x.inverse().expect("Challenge inverse failed");
 
@@ -142,7 +142,7 @@ where
     }
 
     let mut ab_buf = [G::ScalarField::default(); 2];
-    verifier.read_message_scalars(Label::custom("final"), &mut ab_buf)?;
+    verifier.read_message_scalars(Label::new("final"), &mut ab_buf)?;
     let [a, b] = ab_buf;
 
     let c = a * b;
@@ -212,14 +212,14 @@ fn main() {
     // Create prover state
     let mut prover = ProverState::new((*pattern).clone(), OsRng);
     prover
-        .begin_protocol(Label::custom("bulletproof"))
-        .message_points(Label::custom("commitment"), &[statement])
+        .begin_protocol(Label::new("bulletproof"))
+        .message_points(Label::new("commitment"), &[statement])
         .ratchet();
 
     // Generate proof
     prove(&mut prover, generators, &statement, witness, 0).expect("Proving failed");
 
-    prover.end_protocol(Label::custom("bulletproof"));
+    prover.end_protocol(Label::new("bulletproof"));
 
     let proof = prover.finalize();
 
@@ -233,15 +233,15 @@ fn main() {
     let mut commitment = [G::default(); 1];
     let mut verifier = VerifierState::new((*pattern).clone(), &proof);
     verifier
-        .begin_protocol(Label::custom("bulletproof"))
-        .read_message_points(Label::custom("commitment"), &mut commitment)
+        .begin_protocol(Label::new("bulletproof"))
+        .read_message_points(Label::new("commitment"), &mut commitment)
         .expect("Failed to read commitment");
     verifier.ratchet();
 
     // Verify proof
     verify(&mut verifier, generators, size, &commitment[0]).expect("Verification failed");
 
-    verifier.end_protocol(Label::custom("bulletproof"));
+    verifier.end_protocol(Label::new("bulletproof"));
 
     verifier.finalize().expect("Finalize failed");
 

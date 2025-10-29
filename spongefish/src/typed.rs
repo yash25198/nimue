@@ -279,7 +279,7 @@ macro_rules! define_protocol {
         {
             use $crate::codecs::arkworks_algebra::ProverGroupMessageExt;
             use $crate::pattern::Label;
-            state.inner_mut().message_points(Label::custom($label), input).expect("Failed to add points");
+            state.inner_mut().message_points(Label::new($label), input).expect("Failed to add points");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
@@ -296,7 +296,7 @@ macro_rules! define_protocol {
             $crate::ProverState<H, U, R>: $crate::UnitTranscript<U> + $crate::codecs::arkworks_algebra::UnitToField<F>,
         {
             use $crate::{pattern::Label, codecs::arkworks_algebra::UnitToField};
-            state.inner_mut().fill_challenge_scalars(Label::custom($label), output).expect("Failed to fill challenge scalars");
+            state.inner_mut().fill_challenge_scalars(Label::new($label), output).expect("Failed to fill challenge scalars");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
@@ -314,7 +314,7 @@ macro_rules! define_protocol {
         {
             use $crate::codecs::arkworks_algebra::ProverFieldMessageExt;
             use $crate::pattern::Label;
-            state.inner_mut().message_scalars(Label::custom($label), input).expect("Failed to add scalars");
+            state.inner_mut().message_scalars(Label::new($label), input).expect("Failed to add scalars");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_prover_fns [$Name] [$method] [$($acc)*] $($tail)*);
@@ -372,7 +372,7 @@ macro_rules! define_protocol {
         {
             use $crate::codecs::arkworks_algebra::VerifierGroupMessageExt;
             use $crate::pattern::Label;
-            let _ = state.inner_mut().fill_message_points(Label::custom($label), output);
+            let _ = state.inner_mut().fill_message_points(Label::new($label), output);
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
@@ -388,7 +388,7 @@ macro_rules! define_protocol {
             $crate::VerifierState<'a, H, U>: $crate::UnitTranscript<U> + $crate::codecs::arkworks_algebra::UnitToField<F>,
         {
             use $crate::{pattern::Label, codecs::arkworks_algebra::UnitToField};
-            state.inner_mut().fill_challenge_scalars(Label::custom($label), output).expect("Failed to fill challenge scalars");
+            state.inner_mut().fill_challenge_scalars(Label::new($label), output).expect("Failed to fill challenge scalars");
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);
@@ -405,7 +405,7 @@ macro_rules! define_protocol {
         {
             use $crate::codecs::arkworks_algebra::VerifierFieldMessageExt;
             use $crate::pattern::Label;
-            let _ = state.inner_mut().fill_message_scalars(Label::custom($label), output);
+            let _ = state.inner_mut().fill_message_scalars(Label::new($label), output);
             state.transition::<$method>()
         }
         $crate::define_protocol!(@impl_steps_verifier_fns [$Name] [$method] [$($acc)*] $($tail)*);

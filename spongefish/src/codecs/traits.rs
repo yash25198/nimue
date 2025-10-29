@@ -4,17 +4,17 @@ macro_rules! field_traits {
         pub trait FieldPattern {
             fn message_scalars<F: ark_ff::Field>(
                 &mut self,
-                label: Label,
+                label: impl AsRef<str>,
                 count: usize,
             ) -> &mut Self;
             fn challenge_scalars<F: ark_ff::Field>(
                 &mut self,
-                label: Label,
+                label: impl AsRef<str>,
                 count: usize,
             ) -> &mut Self;
             fn message_public_scalars<F: ark_ff::Field>(
                 &mut self,
-                label: Label,
+                label: impl AsRef<str>,
                 count: usize,
             ) -> &mut Self;
         }
@@ -76,12 +76,12 @@ macro_rules! group_traits {
         pub trait GroupPattern {
             fn message_points<G: ark_ec::CurveGroup>(
                 &mut self,
-                label: Label,
+                label: impl AsRef<str>,
                 count: usize,
             ) -> &mut Self;
             fn message_public_points<G: ark_ec::CurveGroup>(
                 &mut self,
-                label: Label,
+                label: impl AsRef<str>,
                 count: usize,
             ) -> &mut Self;
         }

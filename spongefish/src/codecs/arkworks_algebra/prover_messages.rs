@@ -5,7 +5,7 @@ use rand::{CryptoRng, RngCore};
 use super::traits::{FieldTranscript, GroupTranscript};
 use crate::{
     codecs::bytes_uniform_modp,
-    pattern::{Label, Pattern},
+    pattern::{labels, Label, Pattern,Length},
     ByteTranscript, DuplexSpongeInterface, ProverState,
 };
 
@@ -29,7 +29,7 @@ where
         }
 
         // Add bytes directly - this matches the pattern's inner message_bytes call
-        self.message_bytes(Label::BaseFieldCoefficients, &buf)
+        self.message_bytes(labels::BASE_FIELD_COEFFICIENTS, &buf)
     }
 
     fn message_public_scalars_unchecked(&mut self, input: &[F]) -> &mut Self {
@@ -41,23 +41,23 @@ where
         // Pattern expects message_bytes structure: Begin Message -> Message units -> End Message
         // Manually create Message interaction and absorb (but don't write to proof)
         self.begin_message::<u8>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(buf.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+            Length::Fixed(buf.len()),
         );
 
         use crate::pattern::{Hierarchy, Interaction, Kind, Length};
         self.pattern.interact(Interaction::new::<u8>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::Units,
+            labels::UNITS,
             Length::Fixed(buf.len()),
         ));
         self.duplex_sponge.absorb_unchecked(&buf);
         self.rng.ds.absorb_unchecked(&buf);
 
         self.end_message::<u8>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(buf.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+            Length::Fixed(buf.len()),
         );
         self
     }
@@ -68,7 +68,7 @@ where
         let element_size = ext_degree * base_field_size;
         let total_bytes = output.len() * element_size;
         let mut buf = vec![0u8; total_bytes];
-        self.challenge_bytes(Label::BaseFieldCoefficients, &mut buf);
+        self.challenge_bytes(labels::BASE_FIELD_COEFFICIENTS, &mut buf);
         for (elem, chunk) in output.iter_mut().zip(buf.chunks_exact(element_size)) {
             *elem = F::from_base_prime_field_elems(
                 chunk
@@ -93,7 +93,7 @@ where
             p.serialize_compressed(&mut buf)
                 .expect("Serialization failed");
         }
-        self.message_bytes(Label::SerializedGroup, &buf)
+        self.message_bytes(labels::SERIALIZED_GROUP, &buf)
     }
 
     fn message_public_points_unchecked(&mut self, input: &[G]) -> &mut Self {
@@ -103,7 +103,7 @@ where
                 .expect("Serialization failed");
         }
         // Only absorb into sponge, don't write to proof
-        self.message_public_bytes(Label::SerializedGroup, &buf)
+        self.message_public_bytes(labels::SERIALIZED_GROUP, &buf)
     }
 }
 
@@ -123,7 +123,7 @@ where
             .iter()
             .flat_map(Field::to_base_prime_field_elements)
             .collect();
-        self.message_units(Label::BaseFieldCoefficients, &flattened)
+        self.message_units(labels::BASE_FIELD_COEFFICIENTS, &flattened)
     }
 
     fn message_public_scalars_unchecked(&mut self, input: &[F]) -> &mut Self {
@@ -134,8 +134,8 @@ where
         // Pattern expects message_bytes structure: Begin Message -> Message units -> End Message
         // Manually create Message interaction and absorb (but don't write to proof)
         self.begin_message::<Fp<C, N>>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(flattened.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+            Length::Fixed(flattened.len()),
         );
 
         use crate::{
@@ -145,7 +145,7 @@ where
         self.pattern.interact(Interaction::new::<Fp<C, N>>(
             Hierarchy::Atomic,
             Kind::Message,
-            Label::Units,
+            labels::UNITS,
             Length::Fixed(flattened.len()),
         ));
         self.duplex_sponge.absorb_unchecked(&flattened);
@@ -154,8 +154,8 @@ where
         self.rng.ds.absorb_unchecked(&temp_buf);
 
         self.end_message::<Fp<C, N>>(
-            Label::BaseFieldCoefficients,
-            crate::pattern::Length::Fixed(flattened.len()),
+            labels::BASE_FIELD_COEFFICIENTS,
+            Length::Fixed(flattened.len()),
         );
         self
     }
@@ -164,7 +164,7 @@ where
         let ext_degree = F::extension_degree() as usize;
         let total_elements = output.len() * ext_degree;
         let mut base_field_elements = vec![Fp::<C, N>::default(); total_elements];
-        self.challenge_units(Label::BaseFieldCoefficients, &mut base_field_elements);
+        self.challenge_units(labels::BASE_FIELD_COEFFICIENTS, &mut base_field_elements);
         for (i, elem) in output.iter_mut().enumerate() {
             let start = i * ext_degree;
             let end = start + ext_degree;
@@ -198,7 +198,7 @@ where
             coords.push(x);
             coords.push(y);
         }
-        self.message_units(Label::SerializedGroup, &coords)
+        self.message_units(labels::SERIALIZED_GROUP, &coords)
     }
 
     fn message_public_points_unchecked(
@@ -213,7 +213,7 @@ where
             coords.push(y);
         }
         // Only absorb into sponge, don't write to proof
-        self.message_public_units(Label::SerializedGroup, &coords)
+        self.message_public_units(labels::SERIALIZED_GROUP, &coords)
     }
 }
 
@@ -240,7 +240,7 @@ where
             coords.push(x);
             coords.push(y);
         }
-        self.message_units(Label::SerializedGroup, &coords)
+        self.message_units(labels::SERIALIZED_GROUP, &coords)
     }
 
     fn message_public_points_unchecked(
@@ -255,7 +255,7 @@ where
             coords.push(y);
         }
         // Only absorb into sponge, don't write to proof
-        self.message_public_units(Label::SerializedGroup, &coords)
+        self.message_public_units(labels::SERIALIZED_GROUP, &coords)
     }
 }
 
@@ -290,11 +290,11 @@ mod tests {
         ];
 
         let mut pattern = PatternState::new();
-        pattern.message_scalars::<BabyBear>(Label::custom("scalars"), 3);
+        pattern.message_scalars::<BabyBear>(Label::new("scalars"), 3);
         let pattern = pattern.finalize();
 
         let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-        prover.message_scalars(Label::custom("scalars"), &scalars);
+        prover.message_scalars(Label::new("scalars"), &scalars);
 
         let mut expected_bytes = Vec::new();
         for scalar in &scalars {
@@ -310,11 +310,11 @@ mod tests {
         let point = G::generator();
 
         let mut pattern = PatternState::new();
-        pattern.message_points::<G>(Label::custom("point"), 1);
+        pattern.message_points::<G>(Label::new("point"), 1);
         let pattern = pattern.finalize();
 
         let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-        prover.message_points(Label::custom("point"), &[point]);
+        prover.message_points(Label::new("point"), &[point]);
 
         let mut expected = Vec::new();
         point.serialize_compressed(&mut expected).unwrap();
@@ -326,12 +326,12 @@ mod tests {
     #[test]
     fn test_challenge_scalars() {
         let mut pattern = PatternState::new();
-        pattern.challenge_scalars::<BabyBear>(Label::custom("challenge"), 2);
+        pattern.challenge_scalars::<BabyBear>(Label::new("challenge"), 2);
         let pattern = pattern.finalize();
 
         let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
         let mut output = [BabyBear::from(0); 2];
-        prover.challenge_scalars(Label::custom("challenge"), &mut output);
+        prover.challenge_scalars(Label::new("challenge"), &mut output);
         assert_ne!(output[0], BabyBear::from(0));
 
         prover.finalize();
@@ -351,7 +351,7 @@ mod tests {
         let pattern = PatternState::new().finalize();
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-        prover.message_scalars(Label::custom("scalars"), &scalars);
+        prover.message_scalars(Label::new("scalars"), &scalars);
     }
 
     #[test]
@@ -363,7 +363,7 @@ mod tests {
         let pattern = PatternState::new().finalize();
         let mut prover = ProverState::<DefaultHash>::new(pattern, rand::rngs::OsRng);
 
-        prover.message_points(Label::custom("point"), &[point]);
+        prover.message_points(Label::new("point"), &[point]);
     }
 
     #[test]
@@ -385,19 +385,19 @@ mod tests {
 
         // Create pattern
         let mut pattern = PatternState::new();
-        pattern.message_scalars::<BabyBear>(Label::custom("data"), 2);
+        pattern.message_scalars::<BabyBear>(Label::new("data"), 2);
         let pattern = pattern.finalize();
 
         // Prover
         let mut prover = ProverState::<DefaultHash>::new(pattern.clone(), rand::rngs::OsRng);
-        prover.message_scalars(Label::custom("data"), &scalars);
+        prover.message_scalars(Label::new("data"), &scalars);
         let proof = prover.finalize();
 
         // Verifier
         let mut verifier = crate::VerifierState::<DefaultHash>::new(pattern.clone(), &proof);
         let mut received = [BabyBear::from(0u64); 2];
         verifier
-            .read_message_scalars(Label::custom("data"), &mut received)
+            .read_message_scalars(Label::new("data"), &mut received)
             .unwrap();
 
         assert_eq!(scalars, received);
